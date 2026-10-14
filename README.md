@@ -1,4 +1,4 @@
-# Neural Grand Prix
+# F1 AI Manager
 
 Veintidós pilotos con IA que aprenden a correr. Fin de semana completo: libres → Q1/Q2/Q3 → carrera,
 con paradas, estrategia de neumáticos, lluvia, radio y realización de TV. Hecho con three.js, sin build.

@@ -12,6 +12,6 @@ const html = fs.readFileSync(P + '/index.html', 'utf8');
 const style = html.slice(html.indexOf('<!--STYLE-->') + 12, html.indexOf('<!--/STYLE-->'));
 let body = html.slice(html.indexOf('<!--BODY-->') + 11, html.indexOf('<!--/BODY-->'));
 body = body.replace(/<script type="importmap">[\s\S]*?<\/script>/, '').replace(/<script type="module" src="js\/main.js"><\/script>/, '');
-const head = '<title>Neural Grand Prix</title>\n<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&display=swap">\n';
+const head = '<title>F1 AI Manager</title>\n<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Titillium+Web:wght@400;600;700;900&display=swap">\n';
 fs.writeFileSync(P + '/artifact.html', head + style + body + '<script>\n' + js + '\n</script>\n');
 console.log('ok', (fs.statSync(P + '/artifact.html').size / 1024).toFixed(0) + ' KB');
