@@ -45,8 +45,20 @@ export function wetGrip(c, w) {
 // neumático que conviene con esa cantidad de agua
 export const idealTyre = (w) => (w < 0.2 ? null : w < 0.78 ? 'I' : 'W');
 
+// Palancas del mánager. Ritmo: g = agarre que saca de la goma (atacar la lleva más caliente y con más deslizamiento:
+// agarra más pero se gasta mucho más), k = límite que se pone, wear = desgaste, sd = variación de una curva a otra (errores).
+// (solo subir el límite, sin más agarre, hacía que atacar fuese más lento: se pasaba en las frenadas) Motor: pw = potencia; ers = batería por vuelta (− gasta, + recarga). Pelea: ganas de atacar y de defender.
+export const MGR = {
+  pace: { push: { g: 1.02, k: 1, wear: 1.8, sd: 1.45 }, normal: { g: 1, k: 1, wear: 1, sd: 1 }, save: { g: 0.985, k: 0.985, wear: 0.5, sd: 0.75 } },
+  ers: { boost: { pw: 1.06, ers: -0.5 }, normal: { pw: 1, ers: 0.04 }, charge: { pw: 0.955, ers: 0.4 } },
+  fight: { calm: { will: -0.35, dive: 0.4, def: false }, normal: { will: 0, dive: 1, def: true }, hard: { will: 0.3, dive: 1.6, def: true } },
+  WEAR_K: 0.58,   // desgaste medio por vuelta en carrera = compuesto.wear × WEAR_K / vueltas (tools/wearlap.mjs)
+};
+
+export const isFP = (id) => id === 'FP' || id === 'FP2';
 export const SESSIONS = {
-  FP: { label: 'ENTRENAMIENTOS', short: 'FP', dur: 30 * 60 },
+  FP: { label: 'ENTRENAMIENTOS 1', short: 'FP', dur: 60 * 60 },
+  FP2: { label: 'ENTRENAMIENTOS 2', short: 'FP2', dur: 60 * 60 },
   Q1: { label: 'CLASIFICACIÓN · Q1', short: 'Q1', dur: 12 * 60, cut: 16 },
   Q2: { label: 'CLASIFICACIÓN · Q2', short: 'Q2', dur: 10 * 60, cut: 10 },
   Q3: { label: 'CLASIFICACIÓN · Q3', short: 'Q3', dur: 9 * 60, cut: 0 },
@@ -61,7 +73,7 @@ export class Sim {
   constructor(T, opts = {}) {
     this.T = T;
     this.rng = mulberry(opts.seed ?? (Date.now() & 0xffffff));
-    shuffleWeekend(this.rng); // coches y aprendizaje repartidos al azar este fin de semana
+    if (!opts.noShuffle) shuffleWeekend(this.rng); // coches y aprendizaje repartidos al azar este fin de semana (el simulador del mánager no)
     this.raceLaps = opts.raceLaps ?? 20;
     this.weekend = opts.weekend ?? 1;
     this.events = [];
@@ -81,7 +93,8 @@ export class Sim {
     const nN = Math.round(T.L / NODE_STEP), stepN = T.L / nN;
     this.zRange = T.zones.map((zz) => { const lo = Math.ceil(zz.a / stepN); return [lo, Math.ceil((zz.a + zz.len) / stepN) - 1]; });
     const brains = opts.brains || {};
-    this.cars = DRIVERS.map((drv, i) => this.makeCar(drv, i, brains[drv.code]));
+    // (opts.only: solo ese piloto; lo usa el simulador del equipo del mánager)
+    this.cars = DRIVERS.filter((d) => !opts.only || d.code === opts.only).map((drv, i) => this.makeCar(drv, i, brains[drv.code]));
     this.session = null;
     this.flag = 'GREEN'; this.vscT = 0;
     this.fastest = null;
@@ -131,7 +144,7 @@ export class Sim {
 
   // Lo que el piloto cree que agarra el coche ahora (sabe su neumático, no el agarre real)
   plannedMu(car) {
-    return MU * car.team.grip * (1 + 0.018 * (car.drv.pace - 0.88)) * this.tyreGrip(car, true) * this.evoFactor() * (1 - 0.00035 * car.fuel) * (1 - 0.06 * car.dmg) * this.wxCare(car);
+    return MU * this.gripK(car) * this.paceG(car) * (1 + 0.018 * (car.drv.pace - 0.88)) * this.tyreGrip(car, true) * this.evoFactor() * (1 - 0.00035 * car.fuel) * (1 - 0.06 * car.dmg) * this.wxCare(car);
   }
   // prudencia con condiciones cambiantes: si le cae agua encima con lisos, o la pista está a medio secar, levanta algo
   wxCare(car) {
@@ -190,6 +203,7 @@ export class Sim {
       car.zoneIn = -1; car.planned = -1; car.mode = 'free'; car.drs = false; car.slide = 0; car.v = 0; car.dev = 0; car.devV = 0; car.psi = 0; car.beta = 0; car.excursion = false;
       car.wetEst = this.wx.wet; car.wxC = null; car.wxPit = false; car.wxBias = null; this.pickKB(car);
       car.sector = 0; car.sectorStart = this.t; car.curSectors = [0, 0, 0]; car.prevSectors = []; car.secCol = []; car.prevSecCol = []; car.delta = null; car.deltaOwn = null; car.bestCP = null;   // (antes arrastraba los sectores de la sesión anterior: S1 negativo)
+      car.ers = 1; car.lapW0 = 0;
       car.stats = { ot: 0, lost: 0 }; car.runLaps = 0; car.pitReq = false; car.devTarget = 0; car.retired = false; car.otTry = null; car.parked = false; car.parkSide = 0;
       car.out = !active.includes(car);
       if (isRace) {
@@ -200,7 +214,8 @@ export class Sim {
         car.s = box.s + (car.drv === DRIVERS.find((d) => d.team === car.team.id) ? 5 : -5); car.d = T.pit.d - 9; car.lap = 0;
         car.tyre = { c: 'M', wear: 0, temp: 0.4, age: 0, used: new Set() };
         car.fuel = 30;
-        car.plan = this.makePlan(car, id);
+        car.plan = car.mgr ? null : this.makePlan(car, id);
+        if (car.mgr) { car.mgr.go = null; car.mgr.boxReq = false; }
       }
     }
     for (const car of this.cars) this.rebuildLine(car);
@@ -217,7 +232,7 @@ export class Sim {
 
   makePlan(car, id) {
     const r = this.rng;
-    if (id === 'FP') {
+    if (isFP(id)) {
       // tandas: aprender, simulación de clasificación, tanda larga
       const first = 5 + r() * 90;
       return {
@@ -251,8 +266,11 @@ export class Sim {
       car.strategy = this.chooseStrategy(car);
       const wc = idealTyre(this.wx.wet + (this.wx.target > 0.3 ? 0.08 : 0));
       if (wc) car.strategy.stints = [{ c: wc, from: 0, to: this.raceLaps }];
+      const dr = car.mgr?.draft;
+      if (dr && dr.length && dr[dr.length - 1].to === this.raceLaps) car.strategy.stints = dr.map((x) => ({ ...x }));
       car.tyre = { c: car.strategy.stints[0].c, wear: wc ? 0 : car.qualiWear ?? 0.05, temp: 0.75, age: wc ? 0 : 1, used: new Set([car.strategy.stints[0].c]) };
-      car.stint = 0;
+      car.stint = 0; car.lapW0 = car.tyre.wear;
+      if (car.mgr) { car.mgr.stopNow = false; car.mgr.stopsLog = []; car.mgr.plan0 = car.strategy.stints.map((x) => ({ ...x })); }
       car.lapStart = 0; car.sector = 0; car.sectorStart = 0;
       this.rebuildProfile(car);
     });
@@ -417,6 +435,7 @@ export class Sim {
   // ---------------------------------------------------------------- bucle principal
   step() {
     const ss = this.session; if (!ss || ss.done) return;
+    if (this.gridHold && ss.id === 'RACE' && ss.phase === 'grid') return;   // mánager: la parrilla espera a que dé la salida
     this.t += DT;
     const T = this.T;
     this.updateWeather();
@@ -427,7 +446,8 @@ export class Sim {
     { const neutral = this.flag !== 'GREEN'; for (const c of cars) if (neutral || c.inPit) c.lapFlag = true; }
     this.buildNeighbors();
     // tiempo de la vuelta pegado al de delante (a menos de ~0,8 s): en carrera, si es mucho, la vuelta es de tráfico, no de ritmo
-    for (const c of cars) { const n0 = c.nb[0]; if (n0 && !c.inPit && n0.rel < Math.max(15, c.v * 0.8)) c.trafT = (c.trafT || 0) + DT; }
+    // (solo si va en su misma línea: aire sucio o le frena; uno al lado apartándose para dejarle pasar no es tráfico)
+    for (const c of cars) { const n0 = c.nb[0]; if (n0 && !c.inPit && n0.rel < Math.max(15, c.v * 0.8) && Math.abs(n0.o.d - c.d) < 2.6) c.trafT = (c.trafT || 0) + DT; if (c.mode === 'yield' && !c.inPit) c.yieldT = (c.yieldT || 0) + DT; }
     // vecinos (distancia relativa en pista) una vez por paso
     for (const car of cars) {
       if (car.out || car.state === 'garage') continue;
@@ -478,20 +498,25 @@ export class Sim {
         // en libres/clasificación la grúa lo devuelve al garaje
         if (this.t - car.retiredT > 25) {
           car.retired = false; car.parked = false; car.parkSide = 0; this.enterGarage(car);
-          if (ss.id !== 'FP' && car.plan) car.plan.idx = 99;
+          if (!isFP(ss.id) && car.plan) car.plan.idx = 99;
         }
         continue;
       }
       if (car.state !== 'garage') { anyOut = true; continue; }
+      if (car.mgr) {
+        const go = car.mgr.go;
+        if (go && !over) { this.leaveGarage(car, go); car.mgr.go = null; }
+        continue;
+      }
       const p = car.plan; if (!p || over) continue;
       const run = p.runs[p.idx]; if (!run) continue;
       if (run.go === 0) run.go = this.t + (p.gap ?? 30) + this.rng() * 40;
       const left = ss.dur - this.t;
       if (left < 105) continue;
       // clasificación: solo sale si le da tiempo a la vuelta de salida y a empezar la lanzada antes de la bandera
-      if (ss.id !== 'FP' && left < (isFinite(car.best) ? car.best : this.T.L / 62) * 1.18 + 10) continue;
+      if (!isFP(ss.id) && left < (isFinite(car.best) ? car.best : this.T.L / 62) * 1.18 + 10) continue;
       // en clasificación, si no sale ya no le da tiempo; y sin tiempo marcado, sale antes
-      const late = ss.id !== 'FP' && p.idx === p.runs.length - 1 && (left < 200 || (!isFinite(car.best) && this.t > run.go - 150));
+      const late = !isFP(ss.id) && p.idx === p.runs.length - 1 && (left < 200 || (!isFinite(car.best) && this.t > run.go - 150));
       if (this.t >= run.go || late) this.leaveGarage(car, run);
     }
     if (ss.phase === 'flag' && !anyOut) this.endSession();
@@ -501,14 +526,14 @@ export class Sim {
     car.sector = 0; car.sectorStart = this.t; car.curSectors = [0, 0, 0];
     const T = this.T;
     const wc = idealTyre(car.wetEst = this.wx.wet);
-    if (wc) run = { ...run, c: wc }; else if (COMPOUNDS[run.c].wet) run = { ...run, c: 'S' };
-    const fresh = run.kind === 'quali' || car.tyre.c !== run.c || car.tyre.wear > 0.5;
+    if (car.mgr) { /* goma que elige el mánager */ } else if (wc) run = { ...run, c: wc }; else if (COMPOUNDS[run.c].wet) run = { ...run, c: 'S' };
+    const fresh = car.mgr ? run.fresh || car.tyre.c !== run.c : run.kind === 'quali' || car.tyre.c !== run.c || car.tyre.wear > 0.5;
     if (fresh) car.tyre = { c: run.c, wear: 0, temp: 0.55, age: 0, used: car.tyre.used };
     car.tyre.used.add(run.c);
     car.fuel = run.fuel; car.run = run; car.runLaps = 0; car.runGood = false;
     car.state = 'track'; car.inPit = true; car.pitPhase = 'out'; car.d = T.pit.d - 3.5; car.v = 0; car.psi = 0; car.beta = 0;
     const box = T.pit.boxes[TEAMS.indexOf(car.team)]; car.s = box.s;
-    car.lapKind = 'out'; car.lapClean = false; car.pitReq = false;
+    car.lapKind = 'out'; car.lapClean = false; car.pitReq = false; car.lapW0 = car.tyre.wear; car.pushN = 0; car.testRun = !!(car.mgr && run.test);
     this.rebuildProfile(car);
     this.emit({ type: 'leave', car });
   }
@@ -567,6 +592,7 @@ export class Sim {
     this.senseWet(car);
     const race = ss.id === 'RACE';
     const i = T.idx(car.s);
+    if (race && car.mgr && car.strategy) this.mgrPit(car);
     if (car.inPit) return;
     const P = Math.max(15, Math.min(55, car.v * 0.8));
     const sP = car.s + P; const lineP = car.line[T.idx(sP)];
@@ -590,15 +616,26 @@ export class Sim {
       const lapping = race && o.dist - car.dist > T.L * 0.5;
       // libres/clasificación: cede el que no va en vuelta rápida, el que ya la ha estropeado o el que la lleva bastante peor
       const worse = car.lapKind === 'push' && (!car.lapClean || (o.lapClean && car.delta != null && o.delta != null && car.delta > o.delta + 0.8));
-      const slowLap = !race && o.lapKind === 'push' && (car.lapKind !== 'push' || worse);
-      if ((lapping || slowLap) && o.v > car.v - 4) { yieldTo = o; break; }
+      const fightM = car.mgr?.fight;
+      // (mánager: con pelea agresiva no cede en libres ni en clasificación; prudente se aparta ante cualquiera que llegue lanzado)
+      const slowLap = !race && fightM !== 'hard' && o.lapKind === 'push' && (car.lapKind !== 'push' || worse || (fightM === 'calm' && o.v > car.v + 2));
+      // órdenes de equipo (mánager): deja pasar al compañero que viene detrás
+      const swap = race && this.teamOrder?.yield === car && o.team === car.team && rel > -60;
+      // libres: se apartan para el coche del mánager que viene lanzado en modo consistente (si no, ~45 % de sus vueltas con tráfico)
+      const courtesy = !race && !car.mgr && o.testRun && o.lapKind === 'push' && rel > -110;
+      if (courtesy && o.v > car.v - 8) { yieldTo = o; break; }
+      if ((lapping || slowLap || swap) && o.v > car.v - 4) { yieldTo = o; break; }
     }
     // atacar
     let tgt = null;
+    // órdenes de equipo «mantener posiciones»: no ataca al compañero
+    const hold = race && car.mgr && this.teamOrder?.hold;
     for (const { o, rel } of near) {
       if (rel <= 0 || rel > 110) continue;
+      if (hold && o.team === car.team) continue;
       if (!tgt || rel < tgt.rel) tgt = { o, rel };
     }
+    const fight = car.mgr ? MGR.fight[car.mgr.fight] : MGR.fight.normal;
     car.mode = 'free'; car.target = null; car.dive = 0; car.squeeze = 0; car.gripAdv = 1;
     if (yieldTo) car.mode = 'yield';
     else if (tgt && !vsc && car.mistake == null) {
@@ -607,15 +644,19 @@ export class Sim {
       const lap1 = race && car.lap < 1 && this.t - this.raceStart < 35;
       // al que le acaba de pasar no le ataca enseguida salvo que sea claramente más rápido (nada de devolvérsela en la recta)
       const just = race && o === car.passedBy && this.t - car.passedT < 14 && faster < 4;
-      const want = just ? false : race ? (lap1 ? gapT < 0.4 && faster > 1.5 : gapT < 1.0 && (faster > -1 || gapT < 0.5)) : (car.lapKind === 'push' && o.lapKind !== 'push') || (gapT < 0.6 && faster > 2);
+      // (libres/clasificación: con pelea agresiva del mánager se quita de encima a cualquiera algo más lento)
+      const want = just ? false : race ? (lap1 ? gapT < 0.4 && faster > 1.5 : gapT < 1.0 && (faster > -1 || gapT < 0.5)) : (car.lapKind === 'push' && o.lapKind !== 'push') || (gapT < 0.6 && faster > 2) || (car.mgr?.fight === 'hard' && gapT < 1.2 && faster > 0.3);
       const zone = T.zones[nc.id];
       const ot = car.brain.ot[zone.id];
       const belief = (ot.w + 1) / (ot.t + 2);
       // ventaja clara de agarre (sobre todo en mojado: intermedios contra lisos): en curva va mucho más rápido y lo sabe
       const adv = race ? this.tyreGrip(car, true) / Math.max(0.3, this.tyreGrip(o, true)) : 1;
       car.gripAdv = adv;
-      const willing = car.drv.agg * 0.55 + belief * 0.6 + (o.dmg > 0 ? 0.3 : 0) + (race && o.tyre.wear - car.tyre.wear) * 0.8 + Math.max(0, adv - 1) * 4;
-      if ((want || (race && !lap1 && !just && adv > 1.06 && gapT < 1.2)) && (willing > 0.55 || !race)) { car.mode = 'attack'; car.target = o; }
+      const willing = car.drv.agg * 0.55 + belief * 0.6 + (o.dmg > 0 ? 0.3 : 0) + (race && o.tyre.wear - car.tyre.wear) * 0.8 + Math.max(0, adv - 1) * 4 + fight.will;
+      // en plena recta, con margen hasta la frenada y más velocidad que él: lo intenta ahí mismo aunque no se fíe de la curva
+      // (las ganas dependían solo de cómo le había ido adelantando en la curva siguiente: se quedaba detrás toda la recta)
+      const straightPass = race && !lap1 && !just && onStraight && toCorner > brakeDist + 180 && faster > 0.3 && gapT < 0.8;
+      if ((want || (race && !lap1 && !just && adv > 1.06 && gapT < 1.2)) && (willing > 0.55 || !race || straightPass)) { car.mode = 'attack'; car.target = o; }
     }
     // plan de ataque para la próxima curva (se mantiene mientras se está en ella)
     const zNow = T.zoneOf[i];
@@ -640,7 +681,7 @@ export class Sim {
     }
     if (car.alt && zNow !== car.alt.z && !(car.atk && car.atk.z === car.alt.z)) this.clearAlt(car);
     // defender
-    if (race && car.mode !== 'yield' && !vsc) {
+    if (race && car.mode !== 'yield' && !vsc && fight.def) {
       for (const { o, rel } of near) {
         if (rel < -45 || rel > -4) continue;
         if (o.mode === 'attack' && o.target === car && o.v >= car.v - 2) {
@@ -698,13 +739,20 @@ export class Sim {
           // con mucha más goma que él (intermedios contra lisos en mojado) no espera detrás: se pone al lado en la curva,
           // en un carril limpio (con solo SEP + 0,4 se quedaba medio solapado y el tope de seguir le frenaba igual)
           const clearAdv = car.mode === 'attack' && car.target === o && car.gripAdv > 1.06;
-          if (g < SEP + (clearAdv && !onStraight ? 1.4 : 0.4)) {
+          // (pasando en recta: con un carril bien separado; medio solapado le seguía frenando el «no comérselo»)
+          const wide = car.mode === 'attack' && car.target === o && onStraight && (car.passOut === o || rel < 12 + Math.max(0, car.v - o.v) * 3);
+          if (g < SEP + (wide ? 1.3 : clearAdv && !onStraight ? 1.4 : 0.4)) {
             const closing = car.v - o.v;
             // en curva rápida, detrás y por su trazada (fuera de ella tenía que levantar: frenaba mucho siguiendo a otro)
             if (fastC && !clearAdv) c += 0.25 * (1 - Math.min(rel, 110) / 130);
             else if (car.mode === 'attack' && car.target === o) {
               // (con ventaja clara no se esconde al rebufo: en mojado no hay DRS y en recta los lisos corren igual; se abre antes)
-              if (onStraight && toCorner > brakeDist + (clearAdv ? 260 : 110) && rel < 60) c -= clearAdv ? 0.3 : 1.2;
+              // en recta: al rebufo mientras está lejos; cuando ya se le echa encima (tendría que levantar), sale a pasarle en la
+              // misma recta (antes se quedaba detrás hasta la frenada y lo intentaba todo con un «dive bomb» en la curva)
+              // (una vez fuera, sigue fuera hasta la frenada: si no, al perder el rebufo volvía detrás y repetía toda la recta)
+              const pullOut = onStraight && toCorner > brakeDist * 0.6 && (car.passOut === o || rel < 12 + Math.max(0, closing) * 3);
+              if (pullOut) { car.passOutNext = o; c += 9 * (1 - Math.min(rel, 110) / 130); }
+              else if (onStraight && toCorner > brakeDist + (clearAdv ? 260 : 110) && rel < 60) c -= clearAdv ? 0.3 : 1.2;
               else if ((plan === 'exit' || plan === 'cutback') && car.atkPhase !== 'exit' && !clearAdv) c += 0.3; // paciencia: detrás hasta la salida
               else c += 7 * (1 - Math.min(rel, 110) / 130);
             } else {
@@ -730,6 +778,7 @@ export class Sim {
       if (den > 1e-9 && cp - bestC < 5 && cm - bestC < 5) best += 0.5 * Math.max(-0.5, Math.min(0.5, 0.5 * (cm - cp) / den));
     }
     if (car.mode === 'defend' && Math.abs(best - curAbs) > 1.5 && toCorner < 380) car.defMoved = true;
+    car.passOut = car.passOutNext || null; car.passOutNext = null;
     car.targetAbs = best;
     car.devTarget = Math.max(-2 * HALF_W, Math.min(2 * HALF_W, best - lineP));
 
@@ -740,7 +789,7 @@ export class Sim {
       const outside = Math.sign(car.d - o.d) === -inside;
       if (outside && rel > 1.0 && !(car.mode === 'attack' && car.target === o && car.gripAdv > 1.06)) car.squeeze = 0.035 * (1.2 - car.drv.agg * 0.4);
       if (!outside && rel > 2.5) car.squeeze = 0.02;
-      if (!outside && rel <= 2.5 && car.mode === 'attack') car.dive = 0.006 + 0.012 * car.drv.agg;
+      if (!outside && rel <= 2.5 && car.mode === 'attack') car.dive = (0.006 + 0.012 * car.drv.agg) * fight.dive;
     }
     if (car.mode === 'attack' && car.target && !car.otTry) {
       car.otTry = { o: car.target, zone: car.atk?.z ?? nc.id, plan: car.atk?.type || 'inside', t: this.t, gap: T.rel(car.s, car.target.s) };
@@ -819,10 +868,10 @@ export class Sim {
       if (rel <= 0 || rel > 90) continue;
       const lat = Math.abs(o.d - car.d);
       const latT = Math.abs(o.targetAbs - car.targetAbs);
-      if (lat < SEP + 0.1 || (latT < SEP && lat < SEP + 1.5 && rel < 25)) {
+      if (lat < SEP + 0.1 || (latT < SEP && lat < SEP + 1.5 && rel < 25 && car.passOut !== o)) {
         const gap0 = LEN + 1.0 + car.v * 0.05 + (o === car.target ? car.followGap || 0 : 0);
         const cap = o.v + (rel - gap0) * 1.4;
-        if (cap < target) target = Math.max(0, cap);
+        if (cap < target) { target = Math.max(0, cap); if (race && z < 0 && car.mode === 'attack' && cap < car.v - 0.5) this.stuckT = (this.stuckT || 0) + DT; }
       }
     }
     if (car.state === 'grid') target = 0;
@@ -843,9 +892,9 @@ export class Sim {
     let dk = 1;
     if (dirty < 1) { dk = Math.sqrt(1 - (1 - dirty) * (0.7 + 0.3 * car.drv.craft)); target *= dk; mult *= dk; }
     let save = 1; // en carrera, cuidando gomas: algo menos de ritmo y de agarre usado
-    const pace = car.mgr?.pace;
-    if (race && pace === 'push') { save = 1.003; target *= save; mult *= save; }                 // mánager: a por todas (más errores y desgaste)
-    else if (race && pace === 'save') { save = 0.985; target *= save; mult *= save; }            // mánager: cuidar gomas
+    const pace = car.mgr && !car.inPit ? car.mgr.pace : null;
+    // mánager (en todas las sesiones): atacar aprieta más (más desgaste y errores); cuidar va bastante más despacio
+    if (pace && pace !== 'normal') { save = MGR.pace[pace].k; target *= save; mult *= save; }
     else if (race && car.mode === 'free' && this.raceLaps - car.lap > 2) { save = 0.994 + 0.004 * (1 - car.drv.tyre); target *= save; mult *= save; }
     // cuánto aprieta en esta curva (varía de una vuelta a otra: de ahí salen los errores)
     const exec = z >= 0 && z === car.zoneIn ? car.exec || 1 : 1;
@@ -865,10 +914,13 @@ export class Sim {
       surfMu *= this.gravelGrip(car);
     }
     const talent = 1 + 0.018 * (car.drv.pace - 0.88);
-    const muTrue = (1 + (car.exitBoost || 0)) * MU * team.grip * talent * tg * this.evoFactor() * (1 - 0.00035 * car.fuel) *
+    const muTrue = (1 + (car.exitBoost || 0)) * MU * this.gripK(car) * this.paceG(car) * talent * tg * this.evoFactor() * (1 - 0.00035 * car.fuel) *
       (z >= 0 ? this.zoneTrue[z] : 1) * dirty * offLine * surfMu * (1 - 0.06 * car.dmg) * car.wobble;
     const aero = AERO * this.aeroK(car) * (car.drs ? 0.8 : 1) * (1 - 0.18 * car.parts.rw);
-    const drag = CD * this.dragK(car) * (car.drs ? 0.87 : 1) * tow;
+    // rebufo con inercia: al salir de detrás para pasar no se pierde de golpe sino en ~1,5 s (el «tirachinas»);
+    // si se perdía de golpe, a mitad de recta dejaba de ganar metros y el adelantamiento acababa en la curva
+    car.towK = Math.min(tow, (car.towK ?? 1) + DT * 0.13);
+    const drag = CD * this.dragK(car) * (car.drs ? 0.8 : 1) * car.towK;   // (DRS: 0,87 → 0,8, ~+12 km/h: con menos no daba para pasar en recta)
     const v = Math.max(0.1, car.v);
     const down = G + aero * v * v;
     const capT = muTrue * down;                                   // agarre que hay de verdad
@@ -923,7 +975,7 @@ export class Sim {
     const res = (drag * v * v + ROLL) / mass;
     let axT;
     if (v < target - 0.05) {
-      const pw = team.power * 1000 * POWER * gearPower(v) * (car.lapKind === 'cool' ? 0.8 : 1) / (mass * Math.max(v, 8));
+      const pw = team.power * 1000 * POWER * gearPower(v) * (car.lapKind === 'cool' ? 0.8 : 1) * this.ersK(car) / (mass * Math.max(v, 8));
       const launch = race && car.lap < 0 && this.t - this.raceStart < 4 ? car.launch : 1;
       // al acelerar siente la tracción de verdad (con un pequeño margen)
       axT = Math.min(launch * TRAC * Math.min(capP, capT * 0.985) * ellipse(rl), pw, (target - v) / DT + res);
@@ -1002,7 +1054,9 @@ export class Sim {
     const wearScale = race ? 1 / (this.raceLaps * T.L) : 1 / (20 * T.L);
     // gomas de lluvia en seco: se cuecen y se deshacen; lisos en mojado: se enfrían
     const wAt = this.wetAt(car), dryCook = C.wet ? 1 + Math.max(0, 0.25 - wAt) * (car.tyre.c === 'W' ? 22 : 12) : 1;
-    car.tyre.wear += ds * C.wear * wearScale * (0.5 + 0.7 * load * load + slideWear * 6 + (car.brake > 0.5 ? 0.25 : 0)) * mg * 1.05 * dryCook * (car.mgr?.pace === 'push' ? 1.3 : car.mgr?.pace === 'save' ? 0.72 : 1);
+    car.tyre.wear += ds * C.wear * wearScale * (0.5 + 0.7 * load * load + slideWear * 6 + (car.brake > 0.5 ? 0.25 : 0)) * mg * 1.05 * dryCook * (car.mgr ? MGR.pace[car.mgr.pace].wear * (1 + 0.1 * (car.susp || 0)) : 1);
+    // batería: el modo ataque la vacía, recargar la llena (en el garaje se carga entera)
+    if (car.mgr) car.ers = Math.max(0, Math.min(1, car.ers + MGR.ers[car.mgr.ers].ers * ds / T.L));
     const heat = (0.004 + 0.018 * load + 0.006 * car.brake) * C.warm * (C.wet ? 1 : 1 - 0.55 * wAt);
     car.tyre.temp += (heat * (1.15 - car.tyre.temp) - 0.0025 * car.tyre.temp * (car.v < 25 ? 3 : 1)) * DT * 5;
     car.tyre.temp = Math.max(0.2, Math.min(1.1, car.tyre.temp));
@@ -1296,10 +1350,10 @@ export class Sim {
 
   enterGarage(car) {
     car.state = 'garage'; car.pitPhase = 'box'; car.v = 0; car.inPit = true; car.drs = false; car.mistake = null; car.slide = 0; car.psi = 0; car.beta = 0;
-    car.d = this.T.pit.d - 9; car.lapKind = 'out'; car.pitReq = false;
-    if (car.mgr && car.mgr.trimNext != null) { car.trim = car.mgr.trimNext; car.mgr.trimNext = null; this.rebuildProfile(car); }   // en el garaje se cambia el alerón
+    car.d = this.T.pit.d - 9; car.lapKind = 'out'; car.pitReq = false; car.ers = 1; car.testRun = false;
+    if (car.mgr) { car.mgr.boxReq = false; this.emit({ type: 'garage', car }); }
     if (car.plan) {
-      car.plan.idx++; let nx = car.plan.runs[car.plan.idx]; if (nx && this.session.id === 'FP') nx.go = 0;
+      car.plan.idx++; let nx = car.plan.runs[car.plan.idx]; if (nx && isFP(this.session.id)) nx.go = 0;
       // entró a cambiar gomas por el tiempo: vuelve a salir enseguida (en clasificación, con una salida más)
       if (car.wxPit) {
         car.wxPit = false;
@@ -1338,6 +1392,23 @@ export class Sim {
     const ss = this.session;
     if (ss.id === 'RACE') {
       car.stint++;
+      const M = car.mgr;
+      if (M) {
+        // mánager: la goma que diga su plan, sin más
+        // vuelta de la parada: la de entrada (si el box está antes de la meta, aún no ha sumado la vuelta)
+        const box = this.T.pit.boxes[TEAMS.indexOf(car.team)], L = box.s > this.T.L * 0.5 ? car.lap + 1 : car.lap;
+        if (!car.strategy.stints[car.stint]) car.strategy.stints.push({ c: car.tyre.c, from: L, to: this.raceLaps });
+        this.mgrFixPlan(car, L);
+        const c = car.strategy.stints[car.stint].c;
+        M.stopNow = false;
+        M.stopsLog.push({ lap: L, from: car.tyre.c, c, wear: car.tyre.wear, time: car.stopTime, pos: car.pos });
+        car.tyre = { c, wear: 0, temp: 0.6, age: 0, used: car.tyre.used };
+        car.tyre.used.add(c); car.stops++; car.dmg = 0; car.parts = { fw: 0, rw: 0, susp: 0 }; car.pitReq = false;
+        car.pitPhase = 'out'; car.lapKind = 'race';
+        this.rebuildProfile(car);
+        this.emit({ type: 'pitdone', car, time: car.stopTime, c });
+        return;
+      }
       // parada adelantada más de 3 vueltas a lo previsto (y no por el tiempo): se rehace el plan desde aquí
       const was = car.strategy.stints[car.stint - 1];
       if (!car.wxC && was && car.lap + 3 < was.to && this.raceLaps - car.lap > 2) this.replan(car);
@@ -1354,12 +1425,6 @@ export class Sim {
       // (salían con duros a pista empapada y trompeaban vuelta tras vuelta)
       const wc = idealTyre(Math.max(car.wetEst || 0, this.wx.line));
       if (wc && !COMPOUNDS[c].wet) { c = wc; car.strategy.stints = car.strategy.stints.slice(0, car.stint).concat([{ c, from: car.lap, to: this.raceLaps }]); }
-      const M = car.mgr;
-      if (M) {
-        if (M.tyre) { c = M.tyre; car.strategy.stints = car.strategy.stints.slice(0, car.stint).concat([{ c, from: car.lap, to: this.raceLaps }]); }
-        M.box = false; M.tyre = null;
-        if (M.trimNext != null) { car.trim = M.trimNext; M.trimNext = null; }
-      }
       car.tyre = { c, wear: 0, temp: 0.6, age: 0, used: car.tyre.used };
       car.tyre.used.add(c); car.stops++; car.dmg = 0; car.parts = { fw: 0, rw: 0, susp: 0 }; car.pitReq = false;
       car.pitPhase = 'out'; car.lapKind = 'race';
@@ -1448,6 +1513,7 @@ export class Sim {
     }
     const wasKind = car.lapKind;
     const valid = (wasKind === 'push' || wasKind === 'race') && car.sector === 2 && !car.inPit;
+    car.lapBad = wasKind === 'push' ? 'error' : null;   // (lo afina abajo si la vuelta es válida)
     car.lap++;
     this.evo += 1 / 20;
     car.tyre.age++;
@@ -1466,19 +1532,27 @@ export class Sim {
       }
       // también en carrera (si no, el panel de aprendizaje salía vacío), salvo las dos primeras: la salida parada y el pelotón aún agrupado (8–15 s más lentas)
       const traffic = race && (car.trafT || 0) > lapT * 0.3;
+      // (mánager en libres y clasificación: también es de tráfico si ha cedido el paso o ha ido pegado a otro: no sirve para comparar)
+      const trafM = !race && ((car.yieldT || 0) > 0.6 || (car.trafT || 0) > lapT * 0.25);
+      if (wasKind === 'push') car.lapBad = !clean ? 'error' : trafM ? 'tráfico' : null;
+      // mánager: cada vuelta de su equipo, con goma, desgaste, gasolina y reglaje (pestaña de rendimiento)
+      // (tiempo corregido: sin la gasolina y con la pista como si ya tuviera toda la goma: si no, lo de más tarde siempre parece mejor)
+      if (car.mgr) car.mgr.laps.push({ s: ss.id, lap: car.lap, t: lapT, tf: (lapT - car.fuel * 0.03) * Math.sqrt(this.evoFactor()), test: !!car.testRun, c: car.tyre.c, w0: car.lapW0, w1: car.tyre.wear, age: car.tyre.age,
+        trim: car.trim || 0, susp: car.susp || 0, pace: car.mgr.pace, ers: car.mgr.ers, ok: clean && !car.lapFlag && !traffic && !trafM && !(race && car.lap <= 1), wet: this.wx.line > 0.15, water: this.wx.line,
+        fuel: car.fuel, sec: car.curSectors.slice(), know: car.brain.acc, why: !clean ? 'error' : car.lapFlag ? 'bandera/boxes' : traffic || trafM ? 'tráfico' : race && car.lap <= 1 ? 'salida' : '' });
       if (clean && !car.lapFlag && !traffic && !(race && car.lap <= 2)) {
         car.brain.laps++;
         car.brain.lapHist.push({ w: this.weekend, s: ss.id, t: lapT, wet: car.kb !== car.brain, c: car.tyre.c });
         if (car.brain.lapHist.length > 200) car.brain.lapHist.shift();
       }
       // degradación: tiempo corregido por gasolina frente a edad del neumático
-      if (clean && ss.id === 'FP' && car.run?.kind === 'long' && this.wx.wet < 0.05) addDeg(car.brain, car.tyre.c, car.tyre.age, lapT - car.fuel * 0.03);
+      if (clean && isFP(ss.id) && car.run?.kind === 'long' && this.wx.wet < 0.05) addDeg(car.brain, car.tyre.c, car.tyre.age, lapT - car.fuel * 0.03);
       if (race && clean && !car.lapFlag && car.tyre.age > 1 && this.wx.wet < 0.05) addDeg(car.brain, car.tyre.c, car.tyre.age, lapT - car.fuel * 0.03);
       this.emit({ type: 'lap', car, time: lapT, best: lapT === car.best });
     }
     car.prevSectors = car.curSectors.slice(); car.prevSecCol = (car.secCol || []).slice();
-    car.lapStart = this.t; car.sectorStart = this.t; car.sector = 0; car.lapClean = true; car.lapFlag = false; car.trafT = 0; car.secCol = [];
-    car.lapCP = []; car.cpK = -1; car.delta = null; car.deltaOwn = null;
+    car.lapStart = this.t; car.sectorStart = this.t; car.sector = 0; car.lapClean = true; car.lapFlag = false; car.trafT = 0; car.yieldT = 0; car.secCol = [];
+    car.lapCP = []; car.cpK = -1; car.delta = null; car.deltaOwn = null; car.lapW0 = car.tyre.wear;
     car.wobble = 1 + gauss(this.rng) * 0.0035 * (1.25 - car.drv.cons) * (1 + 2.2 * this.wx.wet);
     if (race) this.raceLap(car); else this.practiceLap(car);
     this.rebuildProfile(car);
@@ -1490,9 +1564,25 @@ export class Sim {
     const flag = ss.phase !== 'run';
     if (flag && !car.inPit) car.finished = true;   // cruza la meta con la bandera: bandera de cuadros en la tabla
     if (car.lapKind === 'out' && car.inPit) { car.runLaps--; return; }
+    if (car.mgr) {
+      const M = car.mgr, was = car.lapKind;
+      // lanzadas: la que sale con error o tráfico no cuenta y se repite (salvo que el mánager diga que vale: aviso 'badlap')
+      if (was === 'push') {
+        if (car.lapBad && run.kind === 'quali' && run.repeat !== false) this.emit({ type: 'badlap', car, why: car.lapBad });
+        else car.pushN = (car.pushN || 0) + 1;
+      }
+      if (flag || M.boxReq || (run.laps && car.pushN >= run.laps) || was === 'in') { car.lapKind = 'in'; car.pitReq = true; return; }
+      // vuelta rápida: lanzada y (si se quiere) vuelta tranquila para enfriar; tanda: todas seguidas. El mánager puede
+      // decidir la siguiente vuelta en directo (M.nextLap)
+      // (probado y descartado: esperar en el garaje a un hueco o ir despacio una vuelta para abrirlo; con 22 coches a ritmos
+      // parecidos el tráfico llega igual durante la tanda: ~45 % de lanzadas con tráfico en todos los casos)
+      car.lapKind = M.nextLap || (run.kind === 'quali' && was === 'push' && run.cool !== false ? 'cool' : 'push');
+      M.nextLap = null;
+      return;
+    }
     if (car.lapKind === 'out') car.lapKind = 'push';
     else if (car.lapKind === 'push' || car.lapKind === 'cool') {
-      if (ss.id === 'FP') {
+      if (isFP(ss.id)) {
         if (car.runLaps >= run.laps + 1 || flag) { car.lapKind = 'in'; car.pitReq = true; }
         else if (run.kind === 'quali' && car.lapKind === 'push' && this.rng() < 0.5) car.lapKind = 'cool';
         else car.lapKind = 'push';
@@ -1529,10 +1619,44 @@ export class Sim {
     this.pitDecision(car);
   }
 
+  // reglaje (mánager). Alerón: -1 poca carga (más punta) … +1 mucha carga (más paso por curva).
+  // Suspensión: -1 blanda (más agarre mecánico en lentas, cuida la goma) … +1 dura (plataforma estable: más carga en rápidas, gasta más)
+  aeroK(car) { return car.team.aero * (1 + 0.07 * (car.trim || 0)) * (1 + 0.05 * (car.susp || 0)); }
+  dragK(car) { return car.team.drag * (1 + 0.14 * (car.trim || 0)); }
+  gripK(car) { return car.team.grip * (1 - 0.01 * (car.susp || 0)); }
+  paceG(car) { return car.mgr ? MGR.pace[car.mgr.pace].g : 1; }
+  // modo motor del mánager (sin batería, el ataque no da nada)
+  ersK(car) { const M = car.mgr; if (!M || car.inPit) return 1; const e = MGR.ers[M.ers]; return e.pw > 1 && car.ers <= 0 ? 1 : e.pw; }
+
+  // mánager: la estrategia es suya. Para cuando lo pide el plan o cuando le dice «para en esta vuelta»; nada más
+  // (ni lluvia, ni daños, ni rivales: eso le llega como aviso)
+  mgrPit(car) {
+    const M = car.mgr; if (car.inPit || car.finished || car.retired) return;
+    const left = this.raceLaps - car.lap, sts = car.strategy.stints, st = sts[car.stint];
+    const due = !!st && car.stint < sts.length - 1 && car.lap + 1 >= st.to;
+    car.pitReq = left > 0 && (M.stopNow || due);
+  }
+  // «para en esta vuelta»: la tanda actual acaba aquí y la siguiente empieza ya (con su goma, o con la que se pida)
+  mgrStopNow(car, c) {
+    const M = car.mgr, sts = car.strategy?.stints; if (!M || !sts) return;
+    M.stopNow = true;
+    if (!sts[car.stint + 1]) sts.push({ c: c || car.tyre.c, from: car.lap + 1, to: this.raceLaps });
+    else if (c) sts[car.stint + 1].c = c;
+  }
+  // ajusta el plan a la vuelta real de la parada (la tanda que empieza conserva su final; las de después se empujan si hace falta)
+  mgrFixPlan(car, L) {
+    const sts = car.strategy.stints;
+    if (sts[car.stint - 1]) sts[car.stint - 1].to = L;
+    if (sts[car.stint]) sts[car.stint].from = L;
+    for (let k = car.stint; k < sts.length; k++) {
+      if (k > car.stint) sts[k].from = sts[k - 1].to;
+      if (sts[k].to <= sts[k].from) sts[k].to = Math.min(this.raceLaps, sts[k].from + 1);
+    }
+    while (sts.length > car.stint + 1 && sts[sts.length - 1].from >= this.raceLaps) sts.pop();
+    sts[sts.length - 1].to = this.raceLaps;
+  }
+
   // ¿parar esta vuelta? plan + desgaste real + reacción al rival + VSC barato
-  // ajuste aerodinámico (mánager): -1 poca carga (más punta) … +1 mucha carga (más paso por curva)
-  aeroK(car) { return car.team.aero * (1 + 0.07 * (car.trim || 0)); }
-  dragK(car) { return car.team.drag * (1 + 0.06 * (car.trim || 0)); }
 
   pitDecision(car) {
     const T = this.T;
@@ -1541,10 +1665,7 @@ export class Sim {
     const st = car.strategy.stints[car.stint];
     if (!st) return;
     const needNew = car.tyre.used.size < 2 && !car.tyre.used.has('I') && !car.tyre.used.has('W');
-    // mánager: si ha llamado a boxes, entra; con la estrategia en manual, el equipo solo le mete por daños graves
-    const M = car.mgr;
-    if (M && M.box && lapsLeft > 0) { car.pitReq = true; return; }
-    if (M && !M.auto) { if (car.dmg > 0.5 && lapsLeft > 1) car.pitReq = true; return; }
+    if (car.mgr) return this.mgrPit(car);
     let want = false;
     if (car.stint < car.strategy.stints.length - 1 && car.lap + 1 >= st.to) want = true;
     if (car.tyre.wear > 0.8 && lapsLeft > 2) want = true;
@@ -1779,7 +1900,7 @@ export class Sim {
   planZone(car, z) {
     const T = this.T, ss = this.session, b = car.kb;
     if (car.candNext) { this.revertCand(car, car.candNext); car.candNext = null; }
-    const phase = ss.id === 'FP' ? 'FP' : ss.id === 'RACE' ? 'R' : 'Q';
+    const phase = isFP(ss.id) ? 'FP' : ss.id === 'RACE' ? 'R' : 'Q';
     const pushing = car.lapKind === 'push' || car.lapKind === 'race';
     if (car.inPit || this.flag !== 'GREEN' || car.retired) return;
     // ensayo mental de las trazadas de ataque (en libres sobre todo, y en carrera cuando va en tráfico)
@@ -1790,7 +1911,7 @@ export class Sim {
       const k = e.reduce((m, x, q) => (x.n < e[m].n ? q : m), 0);
       this.practiseAlt(car, z, types[k], 1);
     }
-    if (!pushing || car.mode !== 'free' || (car.alt && car.alt.z === z)) return;
+    if (!pushing || car.mode !== 'free' || (car.alt && car.alt.z === z) || car.testRun) return;   // (modo consistente: nada de pruebas en pista)
     const pExp = phase === 'FP' ? 0.9 : phase === 'Q' ? 0.35 : 0.25;
     if (this.rng() >= pExp) return;
     const zone = T.zones[z], [lo, hi] = this.zRange[z], n = car.work.length;
@@ -1841,15 +1962,17 @@ export class Sim {
   zoneEnter(car, z) {
     car.zoneIn = z; car.zoneT0 = this.t; car.zoneClean = !car.inPit && car.mistake == null; car.zoneMist = false; car.zoneSlide = 0; car.zoneWide = false;
     // cuánto aprieta en esta entrada: nunca igual (los constantes varían menos); bajo presión, algo más
-    const ss = this.session, press = ss.id === 'RACE' ? (car.mode === 'attack' || car.mode === 'defend' ? 0.006 : 0) : car.lapKind === 'push' && ss.id !== 'FP' ? 0.003 : 0;
+    const ss = this.session, press = ss.id === 'RACE' ? (car.mode === 'attack' || car.mode === 'defend' ? 0.006 : 0) : car.lapKind === 'push' && !isFP(ss.id) ? 0.003 : 0;
     // en libres busca el límite (más variación), en una vuelta de clasificación arriesga, y con agua le cuesta más medir
-    const explore = ss.id === 'FP' ? 1.7 : car.lapKind === 'push' ? 1.45 : 1;
+    const explore = car.testRun ? 1 : isFP(ss.id) ? 1.7 : car.lapKind === 'push' ? 1.45 : 1;
     const wetSd = 1 + (COMPOUNDS[car.tyre.c].wet ? 0.9 : 0.4) * Math.min(1, this.wetAt(car) * 2);
-    car.exec = 1 + gauss(this.rng) * EXEC_SD * (1.3 - car.drv.cons) * Math.min(2.1, explore * wetSd) + press * (1.2 - car.drv.cons);
+    // (modo prueba del mánager: conduce de forma repetible, casi igual en cada curva)
+    const sdM = (car.mgr ? MGR.pace[car.mgr.pace].sd : 1) * (car.testRun ? 0.35 : 1);
+    car.exec = 1 + gauss(this.rng) * EXEC_SD * (1.3 - car.drv.cons) * Math.min(2.1, explore * wetSd) * sdM + press * (1.2 - car.drv.cons);
     car.zoneV0 = car.v;
     // a veces, al abrir gas a la salida, se le va la trasera (y la caza): más los agresivos y con agua
     const wet = COMPOUNDS[car.tyre.c].wet ? Math.min(1, this.wetAt(car) * 3) : 0;   // (con lisos en mojado ya tiene bastante)
-    car.kick = !car.inPit && this.rng() < 0.016 * (0.6 + car.drv.agg) * (1 + 1.5 * wet) * (ss.id === 'RACE' ? 1 : 1.3) ? 0.08 + this.rng() * (0.17 + 0.15 * wet) : 0;
+    car.kick = !car.inPit && this.rng() < (car.testRun ? 0.004 : 0.016) * (0.6 + car.drv.agg) * (1 + 1.5 * wet) * (ss.id === 'RACE' ? 1 : 1.3) ? 0.08 + this.rng() * (0.17 + 0.15 * wet) : 0;
     const c = car.candNext;
     if (c && c.z === z) {
       car.candNext = null;
@@ -2040,7 +2163,7 @@ export class Sim {
             if (!st.lapped) {
               const how = st.how;
               c.stats.ot++; o.stats.lost++; o.passedBy = c; o.passedT = this.t;
-              this.emit({ type: 'overtake', car: c, other: o, pos: c.pos, corner: st.corner || this.cornerAt(c.s), how, plan: st.plan });
+              this.emit({ type: 'overtake', car: c, other: o, pos: c.pos, corner: st.corner || this.cornerAt(c.s), how, plan: st.plan, where: st.where });
             }
           }
           if (far || Math.abs(rel) < LEN + 2) continue;      // lejos, o en paralelo: aún no se ha resuelto
@@ -2049,6 +2172,8 @@ export class Sim {
           if (now !== st.cur) {
             const c = now === 1 ? hi : lo, o = now === 1 ? lo : hi;
             st.cur = now; st.since = this.t; st.how = o.mistake ? 'error' : o.mode === 'yield' ? 'cede' : 'pista'; st.corner = this.cornerAt(c.s);
+            // dónde: en plena recta, en la frenada (150 m antes de la curva) o en la curva
+            { const T = this.T, i = T.idx(c.s), toC = T.ahead(c.s, T.corners[T.nextCorner[i]].sIn); st.where = T.zoneOf[i] >= 0 ? 'curva' : toC < 150 ? 'frenada' : 'recta'; }
             // el plan de ataque se da por bueno en el momento de pasar (la confirmación llega luego, quizá fuera de la curva)
             const ot = c.otTry; st.plan = ot && ot.o === o ? ot.plan : c.atk?.type;
             if (ot && ot.o === o) { this.planResult(c, ot, true); c.otTry = null; }
