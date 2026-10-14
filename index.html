@@ -174,43 +174,145 @@ button:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
 #radio p { margin: 6px 0 0; font-size: 16.5px; line-height: 1.35; font-weight: 600; }
 #radio p span { display: inline-block; min-width: 86px; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; color: var(--muted); }
 #radio p.e { color: #cfe8ff; }
-#mgr { position: absolute; right: 16px; top: 204px; width: 316px; max-height: calc(100vh - 204px - 76px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; }
+/* ---------- mánager: muro (derecha) */
+#mgr { position: absolute; right: 16px; top: 204px; width: 324px; max-height: calc(100vh - 204px - 70px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: thin; user-select: none; }
 body.mgr #feed, body.mgr #tele { display: none; }
+#mgr .mt { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; padding: 6px 6px 6px 10px; background: var(--red); color: #fff; border-radius: 10px; }
+#mgr .mt b { font-size: 13px; letter-spacing: 0.02em; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#mgr .gbtn, #garage .gh .x { border: 0; border-radius: 7px; padding: 5px 9px; font: 900 11px var(--font); letter-spacing: 0.1em; background: rgba(0,0,0,0.25); color: #fff; cursor: pointer; }
+#mgr .gbig { display: flex; align-items: center; gap: 10px; width: 100%; border: 1px solid rgba(255,255,255,0.18); border-radius: 10px; padding: 9px 12px; background: var(--panel); color: #fff; cursor: pointer; text-align: left; font-family: var(--font); }
+#mgr .gbig:hover { background: rgba(40,40,52,0.95); border-color: rgba(255,255,255,0.4); } #mgr .gbig.on { background: #fff; color: #111; } #mgr .gbig.on small { color: #555; }
+#mgr .gbig svg { width: 26px; height: 26px; flex: none; } #mgr .gbig span { display: flex; flex-direction: column; flex: 1; } #mgr .gbig b { font-size: 15px; font-weight: 900; letter-spacing: 0.1em; } #mgr .gbig small { font-size: 11px; color: var(--muted); font-weight: 600; }
+#mgr .gbig kbd { font: 900 12px var(--font); border: 1px solid currentColor; border-radius: 5px; padding: 1px 6px; opacity: 0.6; }
 #mgr .tabs { display: flex; gap: 6px; }
-#mgr .tab { flex: 1; display: flex; align-items: center; gap: 5px; border: 0; border-radius: 8px; padding: 6px 7px; background: var(--panel); color: #fff; font: 700 12px 'Titillium Web', sans-serif; cursor: pointer; opacity: 0.7; }
+#mgr .tab { flex: 1; display: flex; align-items: center; gap: 5px; border: 0; border-radius: 8px; padding: 6px 7px; background: var(--panel); color: #fff; font: 700 12px var(--font); cursor: pointer; opacity: 0.7; }
 #mgr .tab.on { opacity: 1; outline: 1px solid rgba(255,255,255,0.6); }
-#mgr .tab .bar { width: 3px; height: 14px; border-radius: 2px; } #mgr .tab b { font-size: 13px; }
+#mgr .tab .bar, #mgr .al .bar, #garage .bar { width: 3px; height: 14px; border-radius: 2px; display: inline-block; } #mgr .tab b { font-size: 13px; }
 #mgr .tab .ty { width: 18px; height: 18px; border-width: 2px; font-size: 9px; margin-left: auto; }
 #mgr .tab em { font-style: normal; font-size: 10px; color: var(--yellow); font-weight: 900; }
-#mgr .mt { display: flex; align-items: baseline; gap: 8px; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; color: var(--muted); padding: 7px 10px; background: var(--red); color: #fff; border-radius: 10px; }
-#mgr .mt b { color: #fff; font-size: 13px; letter-spacing: 0.02em; margin-left: auto; }
-#mgr .rad, #mgr .mc { background: var(--panel); border-radius: 10px; padding: 8px 10px; }
-#mgr .rt { display: flex; justify-content: space-between; align-items: baseline; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; color: var(--muted); }
-#mgr .rt b { color: #fff; font-size: 12px; letter-spacing: 0.02em; }
-#mgr .rb { display: flex; align-items: flex-end; gap: 2px; height: 34px; margin: 6px 0 4px; }
-#mgr .rb i { flex: 1; border-radius: 2px; }
-#mgr .rw { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); } #mgr .rw b { color: #fff; }
-#mgr .mc.f { outline: 1px solid rgba(255,255,255,0.5); }
+#mgr .mc, #mgr .ord, #mgr .als { background: var(--panel); border-radius: 10px; padding: 8px 10px; }
 #mgr .mh { display: flex; align-items: center; gap: 7px; cursor: pointer; }
 #mgr .mh .p { font-weight: 900; font-size: 15px; min-width: 30px; }
 #mgr .mh .bar { width: 4px; height: 18px; border-radius: 2px; }
 #mgr .mh b { font-size: 15px; font-weight: 900; text-transform: uppercase; flex: 1; }
-#mgr .ty { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--tc); display: grid; place-items: center; font-size: 11px; font-weight: 900; }
-#mgr .wr { width: 46px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; } #mgr .wr i { display: block; height: 100%; background: #fff; }
-#mgr .k { font-size: 11px; color: var(--muted); font-weight: 700; }
-#mgr .mi { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin: 5px 0 2px; } #mgr .mi b { color: #fff; font-variant-numeric: tabular-nums; }
+.ty { width: 22px; height: 22px; border-radius: 50%; border: 3px solid var(--tc); display: inline-grid; place-items: center; font-size: 11px; font-weight: 900; color: #fff; flex: none; vertical-align: middle; }
+#mgr .wr { width: 46px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.12); overflow: hidden; } #mgr .wr i { display: block; height: 100%; }
+#mgr .k, #garage .k { font-size: 11px; color: var(--muted); font-weight: 700; }
+#mgr .mi { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); margin: 5px 0 2px; } #mgr .mi b { color: #fff; }
 #mgr .st { font-size: 11px; font-weight: 900; letter-spacing: 0.1em; color: var(--yellow); margin: 2px 0; }
-#mgr .row { display: flex; gap: 4px; margin-top: 6px; }
-#mgr .row button { flex: 1; border: 0; border-radius: 6px; padding: 5px 0; font: 700 12px 'Titillium Web', sans-serif; background: rgba(255,255,255,0.07); color: #d9d9df; cursor: pointer; }
-#mgr .row button:hover { background: rgba(255,255,255,0.14); }
-#mgr .row button.on { background: #fff; color: #111; }
-#mgr .seg button.push.on { background: var(--red); color: #fff; } #mgr .seg button.save.on { background: var(--green); color: #06170c; }
-#mgr .tyres button { flex: 0 0 30px; height: 30px; border-radius: 50%; padding: 0; border: 3px solid var(--tc); background: transparent; color: #fff; }
-#mgr .tyres button.on { background: var(--tc); color: #111; }
-#mgr .tyres .box { flex: 1; border-radius: 6px; border: 0; background: rgba(225,6,0,0.25); color: #fff; letter-spacing: 0.1em; }
-#mgr .tyres .box.on { background: var(--red); color: #fff; } #mgr .tyres .box:disabled { opacity: 0.35; cursor: default; }
-#mgr .trim button { font-size: 10px; } #mgr .trim button.now { box-shadow: inset 0 -2px 0 var(--green); }
-#mgr .foot { align-items: center; } #mgr .foot .auto { flex: 0 0 auto; padding: 5px 10px; } #mgr .foot .k { margin-left: auto; }
+#mgr .lv { margin-top: 8px; }
+#mgr .lt, #mgr .ord > span, #mgr .alh span { display: flex; align-items: center; gap: 8px; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; color: var(--muted); }
+#mgr .bat { flex: 1; max-width: 90px; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.1); overflow: hidden; margin-left: auto; } #mgr .bat i { display: block; height: 100%; background: linear-gradient(90deg, #22c55e, #7CFFB2); }
+#mgr .lc { font-size: 11px; color: #c9cad3; margin-top: 3px; line-height: 1.3; min-height: 1.3em; }
+.row { display: flex; gap: 4px; margin-top: 5px; align-items: center; }
+#mgr .row button, #garage .row button { flex: 1; border: 0; border-radius: 7px; padding: 5px 2px; font: 700 12px var(--font); background: rgba(255,255,255,0.07); color: #d9d9df; cursor: pointer; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+#mgr .row button small, #garage .row button small { font-size: 10px; font-weight: 700; color: var(--muted); }
+#mgr .row button:hover, #garage .row button:hover { background: rgba(255,255,255,0.14); }
+#mgr .row button.on, #garage .row button.on { background: #fff; color: #111; } #mgr .row button.on small, #garage .row button.on small { color: #555; }
+#mgr .seg button.push.on, #mgr .seg button.boost.on, #mgr .seg button.hard.on { background: var(--red); color: #fff; }
+#mgr .seg button.push.on small, #mgr .seg button.boost.on small, #mgr .seg button.hard.on small { color: #ffd6d4; }
+#mgr .seg button.save.on, #mgr .seg button.charge.on, #mgr .seg button.calm.on { background: var(--green); color: #06170c; }
+#mgr .seg button.save.on small, #mgr .seg button.charge.on small, #mgr .seg button.calm.on small { color: #0d4022; }
+#mgr button:disabled, #garage button:disabled { opacity: 0.35; cursor: default; }
+.act { margin-top: 9px; } .act.in { margin: 0; flex: 1; }
+.act .big { width: 100%; border: 0; border-radius: 9px; padding: 8px 10px; font: 900 13px var(--font); letter-spacing: 0.08em; background: rgba(225,6,0,0.28); color: #fff; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; }
+.act .big:hover { background: rgba(225,6,0,0.45); } .act .big.on { background: var(--red); animation: rpb 0.9s ease-in-out infinite alternate; }
+.act .big.go { background: var(--green); color: #06170c; } .act .big.go .ty { color: #06170c; }
+.act .big small { flex-basis: 100%; font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; opacity: 0.85; }
+.act .big .ty { width: 20px; height: 20px; font-size: 10px; }
+#mgr .ord .lc { margin-top: 4px; }
+#mgr .alh { display: flex; align-items: center; justify-content: space-between; }
+#mgr .alh button { border: 0; background: rgba(255,255,255,0.07); color: var(--muted); border-radius: 6px; font: 700 10px var(--font); padding: 3px 7px; cursor: pointer; }
+#mgr .alh button.on { background: var(--yellow); color: #1a1400; }
+#mgr .als .none { color: var(--muted); font-size: 11px; margin: 6px 0 2px; }
+#mgr .al { min-width: 0; overflow: hidden; margin-top: 8px; border-left: 3px solid var(--yellow); padding: 4px 0 2px 8px; animation: slide 0.3s ease-out; }
+#mgr .al .ah { display: flex; align-items: center; gap: 6px; font-size: 12px; } #mgr .al .ah b { font-weight: 900; }
+#mgr .al .ah .t { font-size: 10px; font-weight: 900; letter-spacing: 0.12em; background: var(--yellow); color: #1a1400; padding: 1px 5px; border-radius: 3px; }
+#mgr .al .tm { margin-left: auto; width: 46px; height: 3px; background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden; } #mgr .al .tm i { display: block; height: 100%; width: 100%; background: var(--yellow); transform-origin: left; animation: altm linear forwards; }
+@keyframes altm { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+#mgr .mgrMain { display: flex; flex-direction: column; gap: 8px; }
+#mgr .al p { margin: 4px 0 0; font-size: 12.5px; line-height: 1.3; }
+#mgr .al .row button { padding: 6px 3px; font-size: 11.5px; }
+.startBtn { width: 100%; border: 0; border-radius: 10px; padding: 11px; font: 900 15px var(--font); letter-spacing: 0.12em; background: var(--green); color: #06170c; cursor: pointer; margin-top: 10px; animation: rpb 1s ease-in-out infinite alternate; }
+.startBtn:disabled { animation: none; }
+#mgr .startBtn { margin: 0; }
+/* ---------- mánager: garaje (panel grande, no para la sesión) */
+#garage { position: absolute; right: 356px; top: 16px; width: min(780px, calc(100vw - 372px - 340px)); min-width: 560px; max-height: calc(100vh - 96px); overflow-y: auto; background: rgba(14,14,20,0.95); border-radius: 16px; box-shadow: 0 16px 50px rgba(0,0,0,0.55); border: 1px solid var(--line); scrollbar-width: thin; user-select: none; z-index: 3; }
+@media (max-width: 1300px) { #garage { left: 350px; right: 356px; width: auto; min-width: 0; } }
+body.garageOpen #card, body.garageOpen #battle, body.garageOpen #qlive { visibility: hidden; }
+#garage .gh { position: sticky; top: 0; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(14,14,20,0.98); border-bottom: 1px solid var(--line); z-index: 1; }
+#garage .gh > b { font-size: 12px; font-weight: 900; letter-spacing: 0.16em; background: var(--red); padding: 4px 8px; border-radius: 6px; }
+#garage .gt, #garage .gd { display: flex; gap: 4px; }
+#garage .gt button, #garage .gd button { border: 0; border-radius: 999px; padding: 6px 12px; font: 700 13px var(--font); background: transparent; color: var(--muted); cursor: pointer; display: flex; align-items: center; gap: 6px; }
+#garage .gt button:hover, #garage .gd button:hover { color: #fff; } #garage .gt button.on, #garage .gd button.on { background: #fff; color: #111; }
+#garage .gd { margin-left: auto; } #garage .gh .x { background: rgba(255,255,255,0.08); font-size: 13px; }
+#garage .gb { padding: 12px 16px 16px; }
+#garage .gtitle { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 8px; } #garage .gtitle b { font-size: 17px; font-weight: 900; } #garage .gtitle span { color: var(--muted); font-size: 12.5px; }
+#garage .gtitle.sub { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); } #garage .gtitle .pf { margin-left: auto; }
+#garage .lock { background: rgba(255,209,46,0.1); color: var(--yellow); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin: 0 0 10px; }
+#garage .sset { margin-top: 12px; } #garage .sh { display: flex; align-items: baseline; gap: 10px; } #garage .sh b { font-size: 13px; } #garage .sh span { font-size: 12px; color: var(--muted); }
+#garage .row button { padding: 7px 4px; font-size: 13px; }
+#garage .seg.mini { flex: 0 0 auto; margin: 0; } #garage .seg.mini button { padding: 5px 12px; flex: 0 0 auto; }
+#garage .tyres button, #mgr .tyres button { flex: 0 0 34px; height: 34px; border-radius: 50%; padding: 0; border: 3px solid var(--tc); background: transparent; color: #fff; display: grid; place-items: center; font-weight: 900; }
+#garage .tyres button.on { background: var(--tc); color: #111; }
+#garage .tyres .sp2 { flex: 1; }
+#garage .simrow { display: flex; align-items: center; gap: 12px; margin-top: 10px; } #garage .simrow .leg { margin: 0; flex: 1; } #garage .simrow .btn { padding: 7px 12px; font-size: 13px; white-space: nowrap; }
+#garage .row.laps { gap: 10px; margin-top: 8px; } #garage .row.laps button { flex: 0 0 34px; height: 30px; font-size: 18px; padding: 0; justify-content: center; } #garage .row.laps b { font-size: 20px; min-width: 26px; text-align: center; } #garage .row.laps .fu { margin-left: auto; }
+#garage svg { width: 100%; height: auto; display: block; }
+#garage svg text { font-family: var(--font); }
+#garage .ax { fill: var(--muted); font-size: 11px; } #garage .gl { stroke: rgba(255,255,255,0.07); }
+#garage .cliff { fill: rgba(225,6,0,0.1); } #garage .cl { fill: #ff8a80; font-size: 11px; font-weight: 700; }
+#garage .sb { cursor: pointer; opacity: 0.88; } #garage .sb:hover { opacity: 1; } #garage .sb.past { opacity: 0.35; } #garage .sb.sel { stroke: #fff; stroke-width: 2.5; opacity: 1; }
+#garage .sl { font-size: 11.5px; font-weight: 900; fill: #111; letter-spacing: 0.04em; }
+#garage .wr { fill: none; stroke-width: 3; } #garage .we { fill: none; stroke-width: 2.4; stroke-dasharray: 6 5; }
+#garage .wl { fill: #fff; font-size: 11.5px; font-weight: 900; } #garage .wl.warn { fill: var(--yellow); } #garage .wl.bad { fill: #ff6b5e; }
+#garage .sp { stroke: rgba(255,255,255,0.35); stroke-dasharray: 3 3; }
+#garage .hd { cursor: ew-resize; } #garage .hd rect { fill: #fff; } #garage .hd text { fill: #111; font-size: 11.5px; font-weight: 900; } #garage .hd:hover rect { fill: var(--yellow); }
+#garage .now { stroke: var(--red); stroke-width: 2; } #garage .nowt { fill: #ff8a80; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; }
+#garage .sinfo { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12.5px; color: var(--muted); margin: 6px 0 4px; } #garage .sinfo b { color: #fff; }
+#garage .warn { color: var(--yellow) !important; } #garage .bad { color: #ff6b5e !important; }
+#garage .sctl { display: flex; flex-wrap: wrap; gap: 12px 22px; margin-top: 10px; } #garage .sg { display: flex; flex-direction: column; min-width: 200px; } #garage .sg .row button { padding: 7px 10px; }
+#garage .pfc circle { cursor: help; }
+#garage .cmpctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 6px; } #garage .cmpctl .row { margin: 0; }
+#garage .cmp, #garage .lblk { margin-top: 14px; padding: 12px 14px; background: rgba(255,255,255,0.035); border-radius: 12px; border-left: 4px solid var(--tcol, #888); }
+#garage .cmph { display: flex; align-items: center; gap: 8px; } #garage .cmph b { font-size: 16px; font-weight: 900; text-transform: uppercase; } #garage .cmph .bar { width: 4px; height: 18px; }
+#garage .verd { margin: 6px 0 8px; font-size: 14px; color: #d9d9df; } #garage .verd b { color: #7CFFB2; } #garage .verd .few { color: var(--yellow); font-size: 12px; }
+#garage .crow { display: grid; grid-template-columns: 200px 1fr 86px; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid rgba(255,255,255,0.05); }
+#garage .crow.axis { border-top: 0; padding: 0 0 4px; } #garage .crow .cl b { display: block; font-size: 13px; } #garage .crow .cl small { color: var(--muted); font-size: 11px; }
+#garage .crow .ct { position: relative; height: 22px; background: rgba(255,255,255,0.04); border-radius: 6px; } #garage .crow.axis .ct { background: none; height: 16px; }
+#garage .crow.axis .ct i { position: absolute; top: 0; bottom: 0; border-left: 1px solid rgba(255,255,255,0.15); } #garage .crow.axis .ct i span { position: absolute; top: 0; left: 3px; font-size: 10px; color: var(--muted); white-space: nowrap; }
+#garage .crow .dot { position: absolute; top: 50%; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; background: rgba(255,255,255,0.55); }
+#garage .crow .avg { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; border-radius: 2px; background: #fff; }
+#garage .crow.best .avg { background: #7CFFB2; } #garage .crow.best .dot { background: rgba(124,255,178,0.6); }
+#garage .crow .cd { text-align: right; font-weight: 900; font-size: 14px; } #garage .crow .cd small { display: block; font-size: 11px; color: var(--muted); font-weight: 600; } #garage .crow.best .cd b { color: #7CFFB2; }
+#garage .crow .cl .ty, #garage .verd .ty { width: 16px; height: 16px; font-size: 8px; border-width: 2px; }
+#garage .lblk .ltw { margin-top: 8px; } #garage table.lt tr.ses td { padding-top: 10px; font-size: 10px; font-weight: 900; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); border-bottom: 1px solid var(--line); } #garage .fit { stroke-width: 2; stroke-dasharray: 2 4; opacity: 0.9; }
+#garage .leg, .mgrSum .leg { color: var(--muted); font-size: 11.5px; margin: 4px 0 10px; }
+#garage table.pt { width: 100%; border-collapse: collapse; font-size: 13px; }
+#garage table.pt th { text-align: left; font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; padding: 5px 6px; border-bottom: 1px solid var(--line); } #garage table.pt th.num { text-align: right; }
+#garage table.pt td { padding: 5px 6px; border-bottom: 1px solid rgba(255,255,255,0.04); } #garage table.pt td.num { text-align: right; } #garage table.pt td .ty { width: 18px; height: 18px; font-size: 9px; border-width: 2px; }
+#garage table.pt tr.best td { color: #7CFFB2; }
+#garage .pfil { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 10px; } #garage .pg { margin: 0 0 6px; } #garage .pg .k { margin-left: 8px; }
+#garage .gtitle .bar { width: 4px; height: 14px; margin-right: 4px; }
+#garage .ltw { max-height: 52vh; overflow: auto; scrollbar-width: thin; }
+#garage table.lt { font-size: 11.5px; } #garage table.lt th { position: sticky; top: 0; background: #14141b; } #garage table.lt td, #garage table.lt th { padding: 4px 4px; white-space: nowrap; }
+#garage table.lt tr.off td { color: #6d6f7c; } #garage table.lt td.pb { color: #d98cf0; font-weight: 700; } #garage table.lt td.why { color: var(--muted); font-size: 11px; }
+#garage table.lt tr.best td.why { color: #7CFFB2; } #garage .tst { color: #4FC3F7; font-weight: 700; } #garage .wetc { color: #4FC3F7; } #garage table.pt small { color: var(--muted); }
+#garage .rad.big .rb { display: flex; align-items: flex-end; gap: 3px; height: 120px; margin: 10px 0 4px; } #garage .rad.big .rb i { flex: 1; border-radius: 3px; }
+#garage .rx, #garage .rw { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); } #garage .rw { margin-top: 10px; } #garage .rw b { color: #fff; }
+/* resumen del mánager al acabar la carrera */
+.mgrSum { background: rgba(255,255,255,0.03); border-radius: 14px; padding: 12px 14px; margin: 0 0 14px; }
+.mgrSum .sumh { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; } .mgrSum .sumh > b { font-size: 18px; font-weight: 900; } .mgrSum .sumh span { color: var(--muted); } .mgrSum .sumh span b { color: #fff; font-size: 18px; }
+.mgrSum .scards { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; } @media (max-width: 900px) { .mgrSum .scards { grid-template-columns: 1fr; } }
+.mgrSum .scard { background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 12px; }
+.mgrSum .sh { display: flex; align-items: center; gap: 8px; } .mgrSum .sh .bar { width: 4px; height: 20px; border-radius: 2px; } .mgrSum .sh b { font-size: 16px; font-weight: 900; text-transform: uppercase; }
+.mgrSum .sh .res { font-size: 22px; font-weight: 900; margin-left: auto; } .mgrSum .sh .k { color: var(--muted); font-size: 12px; }
+.mgrSum .srow { display: grid; grid-template-columns: 82px 1fr; align-items: center; gap: 8px; margin-top: 6px; } .mgrSum .srow .k { color: var(--muted); font-size: 11px; font-weight: 700; }
+.mgrSum .sbar { display: flex; gap: 2px; height: 16px; } .mgrSum .sbar i { border-radius: 4px; font-style: normal; font-size: 10px; font-weight: 900; color: #111; display: grid; place-items: center; }
+.mgrSum .sst { display: flex; flex-wrap: wrap; gap: 3px 14px; font-size: 12px; color: var(--muted); margin-top: 8px; } .mgrSum .sst b { color: #fff; }
+.mgrSum .dec { list-style: none; padding: 0; margin: 8px 0 0; font-size: 12.5px; max-height: 190px; overflow: auto; }
+.mgrSum .dec li { padding: 3px 0; border-top: 1px solid rgba(255,255,255,0.05); } .mgrSum .dec .lp { display: inline-block; min-width: 34px; color: var(--muted); font-weight: 700; }
+.mgrSum .dec em { font-style: normal; color: var(--muted); } .mgrSum .dec em.up { color: #5ee08a; } .mgrSum .dec em.down { color: #ff8a80; } .mgrSum .dec .none { color: var(--muted); }
 #replayBar { position: absolute; left: 50%; top: 16px; transform: translateX(-50%); display: none; align-items: center; gap: 10px; background: rgba(12,12,18,0.94); border-radius: 10px; padding: 6px 8px 6px 6px; z-index: 5; box-shadow: 0 6px 24px rgba(0,0,0,0.35); }
 #replayBar.on { display: flex; }
 #replayBar .tag { background: var(--red); color: #fff; font-weight: 900; letter-spacing: 0.14em; font-size: 13px; padding: 6px 10px; border-radius: 6px; animation: rpb 1.2s ease-in-out infinite alternate; }
@@ -289,6 +391,8 @@ body.menu .modal { backdrop-filter: none; background: radial-gradient(120% 90% a
 .note.blue { border-left-color: #2f80ed; } .note.blue .t { background: #2f80ed; }
 .note.green { border-left-color: var(--green); } .note.green .t { background: var(--green); color: #07130a; }
 @keyframes slide { from { transform: translateX(30px); opacity: 0; } to { transform: none; opacity: 1; } }
+#nextBar { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(12,12,18,0.95); border-radius: 12px; padding: 8px 8px 8px 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 4; animation: slide 0.3s ease-out; }
+#nextBar span { font-weight: 900; letter-spacing: 0.14em; font-size: 12px; color: var(--muted); }
 #camLabel { position: absolute; left: 50%; top: 74px; transform: translateX(-50%); font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255,255,255,0.75); background: rgba(0,0,0,0.35); padding: 3px 10px; border-radius: 10px; }
 
 /* semáforo */

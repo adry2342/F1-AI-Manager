@@ -31,7 +31,19 @@ await click('#iGo'); await p.waitForFunction(() => window.__sim?.session, null, 
 check('empieza en libres', await ev(() => window.__sim.session?.id === 'FP'));
 check('10 vueltas de carrera', await ev(() => window.__sim.raceLaps === 10));
 check('tiempo variable', await ev(() => window.__sim.weatherMode === 'mixed'));
-if (a.mode === 'mgr') check('panel mánager', !!(await p.$('#mgr')));
+if (a.mode === 'mgr') {
+  check('panel mánager', !!(await p.$('#mgr')));
+  check('mánager: garaje abierto al empezar', await ev(() => !document.getElementById('garage').classList.contains('hidden')));
+  await click('#garage [data-a="ntyre"][data-v="S"]'); await click('#garage [data-a="nprog"][data-v="quali"]');
+  await click('#garage [data-a="nlaps"][data-v="1"]');
+  check('mánager: elegir número de lanzadas', await ev(() => window.__app.manager.cars[0].mgr.next.laps === 2));
+  await click('#garage [data-a="go"]');
+  await p.waitForTimeout(800);
+  check('mánager: sale a pista con blandos', await ev(() => window.__app.manager.cars[0].state === 'track' && window.__app.manager.cars[0].tyre.c === 'S'));
+  check('mánager: el garaje se cierra al salir', await ev(() => document.getElementById('garage').classList.contains('hidden')));
+  await p.keyboard.press('g'); check('G abre el garaje', await ev(() => !document.getElementById('garage').classList.contains('hidden')));
+  await p.keyboard.press('Escape'); check('Esc cierra el garaje', await ev(() => document.getElementById('garage').classList.contains('hidden') && !document.querySelector('.modal')));
+}
 
 // --- cámaras y controles
 for (const t of ['chase', 'cockpit', 'tcam', 'nose', 'rear', 'heli', 'track', 'free']) {
@@ -78,20 +90,31 @@ await click('#replayBar button[data-a="slow"]'); check('cámara lenta', await ev
 await click('#replayBar button[data-a="live"]'); await p.waitForTimeout(800); check('volver al directo', await ev(() => !window.__app.replay.active));
 
 // --- fin de semana entero con «Saltar»
-for (const want of ['FP', 'Q1', 'Q2', 'Q3', 'RACE']) {
+for (const want of ['FP', 'FP2', 'Q1', 'Q2', 'Q3', 'RACE']) {
   const cur = await ev(() => window.__sim.session?.id);
   check(`sesión ${want}`, cur === want, cur);
   if (a.mode === 'mgr' && want === 'RACE') {
+    await p.waitForTimeout(2000);
+    check('mánager: parrilla retenida', await ev(() => window.__sim.session.phase === 'grid' && window.__sim.gridHold));
+    await click('#mgr [data-a="start"]');
+    check('mánager: dar la salida', await ev(() => !window.__sim.gridHold));
     await p.waitForTimeout(8000);
     const i = await ev(() => window.__app.manager.cars[0].i);
-    await p.click(`#mgr button[data-a="tyre"][data-v="H"][data-i="${i}"]`); await p.click(`#mgr button[data-a="box"][data-i="${i}"]`);
-    check('mánager: BOX marcado', await ev((k) => window.__sim.cars[k].mgr.box, i));
+    await p.click(`#mgr button[data-a="stop"][data-i="${i}"]`); await p.waitForTimeout(200);
+    check('mánager: parar en esta vuelta', await ev((k) => window.__sim.cars[k].mgr.stopNow && window.__sim.cars[k].pitReq, i));
   }
   await click('#bSkip');
   await p.waitForSelector('.modal #mNext', { timeout: 400000 });
   check(`resultados ${want}`, true);
   await click('#mLearn'); check(`aprendizaje desde resultados ${want}`, !!(await p.$('#mBack'))); await click('#mBack');
   if (want === 'RACE') break;
+  if (want === 'FP') {
+    // cerrar los resultados tocando fuera: tiene que quedar un botón para seguir
+    await p.mouse.click(4, 4); await p.waitForTimeout(600);
+    check('resultados cerrados: botón para seguir', !!(await p.$('#nextBar')));
+    await click('#nextBar [data-k="next"]'); await p.waitForTimeout(1500);
+    continue;
+  }
   await click('#mNext'); await p.waitForTimeout(1500);
 }
 check('carrera terminada', await ev(() => window.__sim.session?.done));

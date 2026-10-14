@@ -19,6 +19,8 @@ export class Radio {
 
   // radios «mías»: el coche enfocado y, en el mánager, los dos del equipo
   mine(c) { return c === this.dir.focus || !!this.app.manager?.cars.includes(c); }
+  // mánager: las decisiones (parar, cubrir, gomas de agua, defender) le llegan como avisos con respuesta, no como radio
+  mgr(c) { return !!this.app.manager?.cars.includes(c); }
   once(car, key, secs) {
     const k = car.code + key, t = this.sim.t, prev = this.last.get(k);
     if (prev != null && t - prev < secs && t >= prev) return false;
@@ -31,7 +33,7 @@ export class Radio {
     this.q.sort((a, b) => b.prio - a.prio);
   }
   // compuesto que se pondrá en la próxima parada
-  nextTyre(c) { return c.mgr?.box ? c.mgr.tyre : c.wxC || c.strategy?.stints[c.stint + 1]?.c || c.tyre.c; }
+  nextTyre(c) { return c.wxC || c.strategy?.stints[c.stint + 1]?.c || c.tyre.c; }
   inWindow(c) { const st = c.strategy?.stints[c.stint]; return !!st && c.stint < c.strategy.stints.length - 1 && c.lap + 3 >= st.to; }
   // vecinos en carrera: el de delante y el de detrás en la clasificación
   around(c) { const o = this.sim.raceOrder || [], k = o.indexOf(c); return { ah: k > 0 ? o[k - 1] : null, bh: k >= 0 && k < o.length - 1 ? o[k + 1] : null }; }
@@ -58,6 +60,7 @@ export class Radio {
     if (e.type === 'flag' && race) {
       for (const m of this.app.manager?.cars || [f]) {
         if (!m || m.retired || m.finished) continue;
+        if (e.flag === 'VSC' && this.mgr(m)) continue;
         if (e.flag === 'VSC') this.say(m, [['e', this.inWindow(m) || m.tyre.wear > 0.45 ? `VSC, VSC. Box, box: parada barata. Ponemos ${T(this.nextTyre(m))}.` : 'VSC. Nos quedamos fuera, respeta el delta.']], 3);
         else if (e.flag === 'GREEN' && this.once(m, 'green', 20)) this.say(m, [['e', 'Verde, verde. Fuera VSC.']], 2);
       }
@@ -65,14 +68,14 @@ export class Radio {
     }
     if (e.type === 'weather') {
       const fc = this.forecast();
-      if (e.what === 'rainStart' && f && this.once(f, 'rain', 90)) this.say(f, [['d', pick(['Empieza a llover.', 'Gotas en la visera.'])], ['e', fc && fc.more ? `Copiado. El radar dice que irá a más en ${fc.mins === 1 ? 'un minuto' : `unos ${fc.mins} minutos`}. Preparamos intermedios.` : 'Copiado. Es poca cosa según el radar: seguimos con lisos.']], 2);
+      if (e.what === 'rainStart' && f && !this.mgr(f) && this.once(f, 'rain', 90)) this.say(f, [['d', pick(['Empieza a llover.', 'Gotas en la visera.'])], ['e', fc && fc.more ? `Copiado. El radar dice que irá a más en ${fc.mins === 1 ? 'un minuto' : `unos ${fc.mins} minutos`}. Preparamos intermedios.` : 'Copiado. Es poca cosa según el radar: seguimos con lisos.']], 2);
       else if (e.what === 'rainStop' && f && this.once(f, 'dry', 90)) this.say(f, [['e', 'Ha parado de llover. En cuanto se seque la trazada, lisos. Dinos qué notas.']], 2);
       return;
     }
     if (!c || !this.mine(c)) {
       // un rival directo entra a boxes: cubrir o alargar
       if (race && e.type === 'pitin' && c) for (const m of this.app.manager?.cars || [f]) {
-        if (!m || m.inPit || m.retired) continue;
+        if (!m || m.inPit || m.retired || this.mgr(m)) continue;
         const { ah, bh } = this.around(m);
         if ((c === ah && s.gapTo(m, c) < 3) || (c === bh && s.gapTo(c, m) < 3)) {
           if (!this.once(m, 'rivalpit', 20)) continue;
@@ -89,14 +92,15 @@ export class Radio {
       case 'debris':
         if (e.broken && this.once(c, 'dmg' + e.part, 60)) {
           const what = e.part === 'fw' ? 'el alerón delantero' : e.part === 'rw' ? 'el alerón trasero' : 'la suspensión';
-          this.say(c, [['d', `Tengo daños, ${what}.`], ['e', race ? `Box, box. Cambiamos ${e.part === 'susp' ? 'lo que podamos' : 'el alerón'} y ponemos ${T(this.nextTyre(c))}.` : 'Recibido, vuelve a boxes.']], 3);
+          if (this.mgr(c)) this.say(c, [['d', `Tengo daños, ${what}.`]], 3);
+          else this.say(c, [['d', `Tengo daños, ${what}.`], ['e', race ? `Box, box. Cambiamos ${e.part === 'susp' ? 'lo que podamos' : 'el alerón'} y ponemos ${T(this.nextTyre(c))}.` : 'Recibido, vuelve a boxes.']], 3);
         }
         break;
       case 'retire':
         this.say(c, [['e', e.why === 'accidente' ? `${eng}, ¿estás bien? Carrera terminada.` : 'Para el coche. Se acabó, lo siento.']], 4);
         break;
       case 'pitin':
-        if (race) this.say(c, [['e', `Box, box. Ponemos ${T(this.nextTyre(c))}.`], ['d', 'Copiado.']], 2);
+        if (race && !(this.mgr(c) && c.mgr.stopNow)) this.say(c, [['e', `Box, box. Ponemos ${T(this.nextTyre(c))}.`], ['d', 'Copiado.']], 2);
         break;
       case 'pitdone':
         if (race) setTimeout(() => {
@@ -130,6 +134,11 @@ export class Radio {
     if (left === 5 && this.once(c, 'five', 999)) {
       const bits = [gB != null ? `${gB.toFixed(1)} sobre ${bh.code}` : null, gA != null ? `${gA.toFixed(1)} a ${ah.code}` : null].filter(Boolean).join(', ');
       this.say(c, [['e', `Cinco vueltas. ${bits}. ${gA != null && gA < 2 ? 'Todo lo que tengas.' : 'Gestiona y trae el coche.'}`]], 2); return;
+    }
+    if (this.mgr(c)) {
+      // mánager: solo información (las decisiones van por avisos)
+      if (st && this.inWindow(c) && this.once(c, 'win' + c.stint, 999)) this.say(c, [['e', `Se abre la ventana: el plan dice box en la vuelta ${st.to}, ${T(this.nextTyre(c))}.`]], 2);
+      return;
     }
     if (slick && fc && fc.more && fc.rain > 0.25 && fc.mins <= 6 && this.once(c, 'radar', 200)) {
       this.say(c, [['e', `Radar: lluvia ${fc.rain > 0.6 ? 'fuerte' : 'moderada'} en ${fc.mins === 1 ? 'un minuto' : `unos ${fc.mins} minutos`}. ${this.inWindow(c) ? 'Retrasamos la parada para ir directos a intermedios.' : 'Seguimos, te avisamos.'}`]], 2); return;

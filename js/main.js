@@ -24,7 +24,7 @@ const msg = (t) => { const el = document.getElementById('loadMsg'); if (el) el.t
 const frame = () => new Promise((r) => requestAnimationFrame(() => r()));
 
 const params = new URLSearchParams(location.search);
-const DEFAULT_SPEED = { FP: 1, Q1: 1, Q2: 1, Q3: 1, RACE: 1 };
+const DEFAULT_SPEED = { FP: 1, FP2: 1, Q1: 1, Q2: 1, Q3: 1, RACE: 1 };
 
 async function main(choice) {
   const quality = choice.quality, trackId = choice.track;
@@ -76,7 +76,7 @@ async function main(choice) {
   const app = {
     sim, T, director, speed: 1, lastSpeed: 1, skipping: false, audio: new EngineAudio(),
     setSpeed(s) { if (s > 0) this.lastSpeed = s; this.speed = s; ui.syncButtons(); },
-    skip() { if (!sim.session?.done) { this.skipping = true; document.getElementById('skipBar')?.remove(); const d = document.createElement('div'); d.id = 'skipBar'; d.innerHTML = '<b>Simulando el resto de la sesión…</b><div class="track"><i></i></div>'; document.getElementById('hud').appendChild(d); } },
+    skip() { if (!sim.session?.done) { sim.gridHold = false; this.skipping = true; document.getElementById('skipBar')?.remove(); const d = document.createElement('div'); d.id = 'skipBar'; d.innerHTML = '<b>Simulando el resto de la sesión…</b><div class="track"><i></i></div>'; document.getElementById('hud').appendChild(d); } },
     restart() { location.reload(); },   // fin de semana nuevo: pilotos sin nada aprendido
     nextSession() {
       const cur = sim.session?.id;
@@ -201,7 +201,7 @@ async function main(choice) {
 
   // --- empieza
   document.getElementById('loading').remove();
-  if (choice.mode === 'mgr') { app.manager = new Manager(sim, director, choice.team); director.setFocus(app.manager.cars[0]); }
+  if (choice.mode === 'mgr') { app.manager = new Manager(sim, director, choice.team, app); director.setFocus(app.manager.cars[0]); }
   app.audio.start(); ui.syncButtons();
   if (!params.get('autostart')) startSession(params.get('start') || 'FP');
   if (params.get('autostart')) { ui.closeModal(); startSession(params.get('autostart')); }
@@ -245,17 +245,17 @@ async function startScreen() {
         <h3>Circuito</h3>
         <div class="tcards">${Object.values(CIRCUITS).map(trackCard).join('')}</div>
         <h3>El fin de semana</h3>
-        <div class="sched"><div><b>Libres</b><span>30 min · buscan trazada y límite</span></div><div><b>Clasificación</b><span>Q1 12′ · Q2 10′ · Q3 9′</span></div><div><b>Carrera</b><span id="schedLaps">${laps} vueltas · paradas y peleas</span></div></div>
+        <div class="sched"><div><b>Libres 1 y 2</b><span>1 h cada una · buscan trazada y límite</span></div><div><b>Clasificación</b><span>Q1 12′ · Q2 10′ · Q3 9′</span></div><div><b>Carrera</b><span id="schedLaps">${laps} vueltas · paradas y peleas</span></div></div>
       </div>
       <div class="st-r">
         <h3>Modo</h3>${seg('iMode', O.iMode, curMode)}
         <div class="teams ${curMode === 'mgr' ? '' : 'off'}">${TEAMS.map((t) => `<button data-team="${t.id}" class="${t.id === curTeam ? 'on' : ''}" title="${t.name}"><i style="background:${t.c1}"></i><i style="background:${t.c2}"></i><span>${t.short}</span></button>`).join('')}</div>
-        <p class="hint">${curMode === 'mgr' ? 'Llevas a los dos pilotos desde el muro: ritmo, paradas, neumáticos y alerón.' : 'La retransmisión se realiza sola; puedes elegir piloto y plano cuando quieras.'}</p>
+        <p class="hint">${curMode === 'mgr' ? 'Llevas a los dos pilotos desde el muro: salidas a pista, reglaje, plan de paradas, ritmo, motor y órdenes de equipo.' : 'La retransmisión se realiza sola; puedes elegir piloto y plano cuando quieras.'}</p>
         <h3>Tiempo</h3>${seg('iWx', O.iWx, wx)}
         <h3>Vueltas de carrera</h3>${seg('iLaps', O.iLaps, laps)}
         <h3>Calidad gráfica</h3>${seg('iQ', O.iQ, quality)}
         <button class="btn go" id="iGo">Empezar el fin de semana</button>
-        <p class="keys"><b>A</b> auto · <b>1–8</b> planos · <b>Espacio</b> pausa · <b>+/−</b> velocidad · <b>R</b> repetición · <b>L</b> aprendizaje · <b>Esc</b> menú</p>
+        <p class="keys"><b>A</b> auto · <b>1–8</b> planos · <b>Espacio</b> pausa · <b>+/−</b> velocidad · <b>R</b> repetición · <b>L</b> aprendizaje · <b>Esc</b> menú · <b>G</b> garaje (mánager)</p>
       </div>
       ${hidden('iTrack', Object.values(CIRCUITS).map((c) => [c.id, c.name]), trackId)}${hidden('iLaps', O.iLaps, laps)}${hidden('iWx', O.iWx, wx)}${hidden('iMode', O.iMode, curMode)}${hidden('iQ', O.iQ, quality)}${hidden('iTeam', TEAMS.map((t) => [t.id, t.name]), curTeam)}
     </div></div>`;
@@ -275,7 +275,7 @@ async function startScreen() {
   intro.querySelector('#iMode').onchange = (e) => {
     const m = e.target.value === 'mgr';
     intro.querySelector('.teams').classList.toggle('off', !m);
-    intro.querySelector('.hint').textContent = m ? 'Llevas a los dos pilotos desde el muro: ritmo, paradas, neumáticos y alerón.' : 'La retransmisión se realiza sola; puedes elegir piloto y plano cuando quieras.';
+    intro.querySelector('.hint').textContent = m ? 'Llevas a los dos pilotos desde el muro: salidas a pista, reglaje, plan de paradas, ritmo, motor y órdenes de equipo.' : 'La retransmisión se realiza sola; puedes elegir piloto y plano cuando quieras.';
   };
   return new Promise((resolve) => {
     const go = () => {

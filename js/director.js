@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CAM_MOUNTS } from './carModel.js';
 import { HALF_W } from './track.js';
-import { SESSIONS } from './sim.js';
+import { SESSIONS, isFP } from './sim.js';
 import { TEAMS } from './teams.js';
 
 const SESSIONS_CUT = { Q1: SESSIONS.Q1.cut, Q2: SESSIONS.Q2.cut, Q3: 0 };
@@ -196,7 +196,7 @@ export class Director {
         const cls = sim.classification(); let pp = cls.findIndex((c) => !(c.best < proj)); if (pp < 0) pp = cls.length;
         s += Math.max(0, 9 - pp * 1.1); why.push('lap');
         if (car.delta < 0) { s += 6; why.push('purple'); }
-        const cut = ss.id !== 'FP' ? SESSIONS_CUT[ss.id] : 0;
+        const cut = !isFP(ss.id) ? SESSIONS_CUT[ss.id] : 0;
         if (cut && Math.abs(pp - cut) <= 2 && ss.dur - sim.t < 200) { s += 5; why.push('bubble'); }
         if (car.sector === 2) s += 2 + Math.max(0, 3 - Math.abs(car.delta) * 5);      // final de una vuelta buena
       } else if (!car.lapClean) s -= 3;
@@ -220,7 +220,7 @@ export class Director {
   // rato que no salen. Clasificación: la vuelta que va a mejorar la tabla y, sobre todo en Q1 y Q2, los que se juegan
   // quedar eliminados (los que están en la zona de corte o justo encima).
   storyOf(car, ctx) {
-    const sim = this.sim, T = this.T, ss = sim.session, fp = ss.id === 'FP';
+    const sim = this.sim, T = this.T, ss = sim.session, fp = isFP(ss.id);
     if (car.out || car.retired || car.state === 'garage' || car.parked) return null;
     const toLine = T.ahead(car.s, 0), frac = 1 - toLine / T.L;
     if (car.mistake && (car.mistake.type === 'spin' || car.mistake.type === 'off')) return { kind: 'mistake', v: car.mistake.type === 'spin' ? 16 : fp ? 7 : 8 };

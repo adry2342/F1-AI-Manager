@@ -1,7 +1,7 @@
 // HUD estilo retransmisión: torre de tiempos, ficha y telemetría, peleas, avisos, mapa, semáforo,
 // paneles de resultados y de aprendizaje.
 import { COMPOUNDS, TEAMS } from './teams.js';
-import { SESSIONS } from './sim.js';
+import { SESSIONS, isFP } from './sim.js';
 import { CAM_TYPES, CAM_LABEL } from './director.js';
 import { degSlope, buildLine } from './brain.js';
 
@@ -11,8 +11,8 @@ export const fmtLap = (t) => (isFinite(t) && t > 0 ? `${Math.floor(t / 60)}:${(t
 const fmtGap = (t) => (t < 60 ? `+${t.toFixed(3)}` : `+${Math.floor(t / 60)}:${(t % 60).toFixed(1).padStart(4, '0')}`);
 const tyreHTML = (c, age) => `<span class="tyre ${c}" title="${COMPOUNDS[c].name}${age != null ? ' · ' + age + ' vueltas' : ''}"><i>${c}</i></span>`;
 const PLAN = { inside: 'por dentro', outside: 'por fuera', cutback: 'cruce a la salida', exit: 'rebufo a la salida' };
-const NEXT = { FP: 'Q1', Q1: 'Q2', Q2: 'Q3', Q3: 'RACE' };
-const NEXT_LABEL = { FP: 'Ir a la clasificación', Q1: 'Ir a la Q2', Q2: 'Ir a la Q3', Q3: 'Ir a la carrera', RACE: 'Nuevo fin de semana' };
+const NEXT = { FP: 'FP2', FP2: 'Q1', Q1: 'Q2', Q2: 'Q3', Q3: 'RACE' };
+const NEXT_LABEL = { FP: 'Ir a Libres 2', FP2: 'Ir a la clasificación', Q1: 'Ir a la Q2', Q2: 'Ir a la Q3', Q3: 'Ir a la carrera', RACE: 'Nuevo fin de semana' };
 
 export class UI {
   constructor(app) {
@@ -96,8 +96,8 @@ export class UI {
     const sim = this.sim, ss = sim.session; if (!ss) return;
     const race = ss.id === 'RACE';
     const order = this.order();
-    $('sessName').textContent = race ? `VUELTA ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : ss.short === 'FP' ? 'LIBRES' : ss.short;
-    $('sessSub').textContent = race ? (this.mode === 'interval' ? 'Intervalo' : 'Líder') : ss.short === 'FP' ? 'Entrenamientos' : 'Clasificación';
+    $('sessName').textContent = race ? `VUELTA ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : ss.short === 'FP' ? 'LIBRES 1' : ss.short === 'FP2' ? 'LIBRES 2' : ss.short;
+    $('sessSub').textContent = race ? (this.mode === 'interval' ? 'Intervalo' : 'Líder') : isFP(ss.short) ? 'Entrenamientos' : 'Clasificación';
     const cut = SESSIONS[ss.id]?.cut;
     const best = order.find((c) => isFinite(c.best))?.best;
     let html = '';
@@ -130,7 +130,8 @@ export class UI {
       if (car === this.dir.focus) cls += ' focus';
       if (car.finished && !car.retired) cls += ' fin';
       const up = race && car.gridPos && car.pos < car.gridPos && !car.retired ? '<span class="up">▲</span>' : '';
-      html += `<li data-i="${car.i}" class="${cls}"><span class="p">${p + 1}</span><span class="bar" style="background:${car.team.c1}"></span><span class="code">${car.code}</span><span class="gap ${gapCls}">${gap}</span><span class="ll ${llCls}" title="Última vuelta">${car.lastLap > 0 ? fmtLap(car.lastLap) : ''}</span>${tyreHTML(car.tyre.c)}${tag}${up}${car.finished && !car.retired ? '<span class="chq" title="Ha cruzado la meta"></span>' : ''}</li>`;
+      // (sin tiempo en libres o clasificación no tiene posición: antes se numeraban todos en el orden de la lista)
+      html += `<li data-i="${car.i}" class="${cls}"><span class="p">${race || isFinite(car.best) ? p + 1 : '–'}</span><span class="bar" style="background:${car.team.c1}"></span><span class="code">${car.code}</span><span class="gap ${gapCls}">${gap}</span><span class="ll ${llCls}" title="Última vuelta">${car.lastLap > 0 ? fmtLap(car.lastLap) : ''}</span>${tyreHTML(car.tyre.c)}${tag}${up}${car.finished && !car.retired ? '<span class="chq" title="Ha cruzado la meta"></span>' : ''}</li>`;
     });
     $('rows').innerHTML = html;
     // barra de sesión
@@ -177,7 +178,7 @@ export class UI {
     else if (car.cand) mode = `Probando trazada en ${this.T.zones[car.cand.z].corner.name}`;
     else mode = race ? (car.finished ? 'Bandera a cuadros' : 'Ritmo de carrera') : { push: 'Vuelta rápida', out: 'Vuelta de salida', in: 'Vuelta de entrada', cool: 'Enfriando' }[car.lapKind] || '';
     $('card').innerHTML = `
-      <div class="top"><div class="pos">${p + 1}</div><div class="stripe" style="background:${car.team.c1}"></div>
+      <div class="top"><div class="pos">${race || isFinite(car.best) ? p + 1 : '–'}</div><div class="stripe" style="background:${car.team.c1}"></div>
         <div class="who"><span class="n">${esc(car.drv.first)} · ${esc(car.team.name)}</span><span class="ln">${esc(car.drv.last)}</span></div>
         <div class="num" style="color:${car.team.c2 === '#FFFFFF' ? car.team.c1 : car.team.c2}">${car.drv.num}</div></div>
       ${this.deltaRow(car, race)}
@@ -308,7 +309,7 @@ export class UI {
     if (!e.best) { tag = `SIN MEJORAR · P${p}`; cl = 'down'; }
     else if (p === 1) { tag = cls[1] ? `P1 · −${(cls[1].best - c.best).toFixed(3)}` : 'P1'; cl = 'purple'; }
     else { tag = `P${p} · +${(c.best - cls[0].best).toFixed(3)}`; cl = cut && p > cut ? 'red' : 'up'; }
-    const zone = e.best && cut && sim.session.id !== 'FP' ? (p > cut ? 'ZONA DE ELIMINACIÓN' : p > cut - 3 ? 'POR POCO DENTRO' : '') : '';
+    const zone = e.best && cut && !isFP(sim.session.id) ? (p > cut ? 'ZONA DE ELIMINACIÓN' : p > cut - 3 ? 'POR POCO DENTRO' : '') : '';
     $('lapPop')?.remove();
     const d = document.createElement('div'); d.id = 'lapPop';
     d.innerHTML = `<i style="background:${c.team.c1}"></i><b>${c.code}</b><span class="t">${fmtLap(e.time)}</span><span class="r ${cl}">${tag}</span>${zone ? `<span class="z">${zone}</span>` : ''}`;
@@ -370,11 +371,24 @@ export class UI {
   // ---------------------------------------------------------- bucle
   update(dt) {
     this.acc += dt; this.accCard += dt;
-    if (this.acc > 0.25) { this.acc = 0; this.tower(); this.battle(); this.lights(); this.map(); this.syncButtons(); }
+    if (this.acc > 0.25) { this.acc = 0; this.tower(); this.battle(); this.lights(); this.map(); this.syncButtons(); this.nextBar(); }
     if (this.accCard > 0.08) { this.accCard = 0; this.card(); this.tele(); this.qualiLive(); }
   }
 
   // ---------------------------------------------------------- paneles
+  // sesión terminada y resultados cerrados (por ejemplo tocando fuera): botón para volver a ellos y seguir
+  // (antes, cerrados los resultados, no había forma de pasar a la siguiente sesión)
+  nextBar() {
+    const R = this.lastResults, show = !!(R && this.sim.session?.done && R[0] === this.sim.session.id && !document.querySelector('.modal'));
+    let el = $('nextBar');
+    if (!show) { el?.remove(); return; }
+    if (el) return;
+    el = document.createElement('div'); el.id = 'nextBar';
+    el.innerHTML = `<span>SESIÓN TERMINADA</span><button class="btn ghost" data-k="res">Ver resultados</button><button class="btn" data-k="next">${NEXT_LABEL[R[0]]}</button>`;
+    el.onclick = (e) => { const k = e.target.closest('button')?.dataset.k; if (k === 'res') this.results(...R); else if (k === 'next') { el.remove(); this.app.nextSession(); } };
+    $('hud').appendChild(el);
+  }
+
   closeModal() {
     document.querySelectorAll('.modal').forEach((m) => m.remove());
     if (this.pausedSpeed != null) { this.app.setSpeed(this.pausedSpeed); this.pausedSpeed = null; }
@@ -406,6 +420,7 @@ export class UI {
   }
 
   results(id, cls) {
+    this.lastResults = [id, cls];
     const sim = this.sim, race = id === 'RACE';
     const best = cls.find((c) => isFinite(c.best))?.best;
     const rows = cls.map((c, p) => {
@@ -423,7 +438,7 @@ export class UI {
     const lead = race ? `Vuelta rápida: <b>${sim.fastest ? sim.fastest.car.code + ' ' + fmtLap(sim.fastest.t) : '—'}</b>. El próximo fin de semana los pilotos empiezan de cero.`
       : cut ? `Quedan eliminados del ${cut + 1}.º al ${id === 'Q1' ? 22 : 16}.º.` : id === 'Q3' ? `Pole para <b>${cls[0].drv.first} ${cls[0].drv.last}</b>.` : 'Los pilotos han probado trazadas y frenadas en cada curva. Mira el panel de IA para ver cuánto han mejorado.';
     const m = this.modal(`<header><span class="kicker">${race ? 'CARRERA' : SESSIONS[id].short}</span><h2>${title}</h2><button class="btn ghost" id="mLearn">Ver aprendizaje</button><button class="btn" id="mNext">${NEXT_LABEL[id]}</button></header>
-      <div class="body"><p class="lead">${lead}</p><div class="tw"><table class="cls"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>`);
+      <div class="body"><p class="lead">${lead}</p>${race && this.app.manager ? this.app.manager.summaryHTML(cls) : ''}<div class="tw"><table class="cls"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>`);
     m.querySelector('#mNext').onclick = () => { this.closeModal(); this.app.nextSession(); };
     m.querySelector('#mLearn').onclick = () => this.showLearning(true);
   }
