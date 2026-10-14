@@ -6,7 +6,7 @@ import { makeV6 } from './engineDSP.js';
 // - Turbocharger & Gas Flow: silbido de turbina de alta frecuencia (3.5-5.2 kHz) y flujo de gases directo.
 // - ERS / MGU-K: inversor eléctrico de alta frecuencia (1.8-4.5 kHz) en aceleración y frenada regenerativa.
 // - Transmisión Seamless: microcortes de encendido (50 ms) con detonación explosiva (bang) instantánea en subidas,
-//   golpe de gas (blip) con ladrido grave en reducciones y petardeo continuo en retención.
+//   golpe de gas (blip) con ladrido grave en reducciones.
 // - Acústica y Cámaras: Doppler físico EXCLUSIVO en planos fijos de pista (Doppler=1.0 en cockpit, chase y dron),
 //   suavizado continuo de distancia para evitar saltos de ganancia, y reverberación convolutiva de circuito.
 
@@ -19,7 +19,6 @@ export class EngineAudio {
     this.prevThrottle = 0;
     this.shiftCutUntil = 0;
     this.downshiftBlipUntil = 0;
-    this.lastCrackleTime = 0;
     this.smoothedDist = null;
   }
 
@@ -283,8 +282,11 @@ export class EngineAudio {
 
     // motor por explosiones (engineDSP.js) en un AudioWorklet: cuando está listo sustituye a los osciladores y al
     // subgrave (que sonaban a sintetizador); va directo al filtro de aire, sin la EQ ni la saturación de los osciladores
+    // (si el de reserva ya estaba sonando y el AudioWorklet llega después, se cambia al bueno: el de reserva corre en el
+    // hilo principal y, mientras se dibuja la escena, se queda sin muestras a tiempo y chisporrotea)
     const useV6 = (node, P) => {
-      if (this.v6) return;
+      if (this.v6 && !this.v6._sp) return;
+      if (this.v6) { this.v6._sp.onaudioprocess = null; this.v6._sp.disconnect(); this.v6Gain.disconnect(); }
       this.v6 = P;
       const g = this.v6Gain = ctx.createGain(); g.gain.value = 1.1;
       node.connect(g).connect(engineAirFilter);
@@ -294,14 +296,14 @@ export class EngineAudio {
     // si el AudioWorklet no arranca (en algunos Chrome addModule no termina nunca), el mismo motor en el hilo principal
     const fallback = () => {
       if (this.v6 || !ctx.createScriptProcessor) return;
-      const sp = ctx.createScriptProcessor(1024, 0, 1), gen = makeV6(ctx.sampleRate, 7);
+      const sp = ctx.createScriptProcessor(4096, 0, 1), gen = makeV6(ctx.sampleRate, 7);
       const P = { rpm: 5000, load: 0, cut: 0, _sp: sp };
       sp.onaudioprocess = (e) => { const o = e.outputBuffer.getChannelData(0); gen(o, o.length, P.rpm, P.load, P.cut); };
       useV6(sp, P);
     };
     if (ctx.audioWorklet) {
       ctx.audioWorklet.addModule(new URL('./v6worklet.js', import.meta.url)).then(() => {
-        if (this.v6) return;
+        if (this.v6 && !this.v6._sp) return;
         const node = new AudioWorkletNode(ctx, 'v6', { outputChannelCount: [1] });
         const pr = node.parameters, P = { node };
         for (const k of ['rpm', 'load', 'cut']) Object.defineProperty(P, k, { set: (v) => pr.get(k).setTargetAtTime(v, ctx.currentTime, k === 'cut' ? 0.001 : 0.012) });
@@ -588,6 +590,14 @@ export class EngineAudio {
     return { doppler, pan, dist };
   }
 
+  // chasquido de escape en los cambios: entra en 3 ms (saltar de golpe a su volumen hacía clic) y se apaga enseguida
+  crackle(t, peak, dur) { this.burst(this.crackleGain, t, peak, dur); }
+  burst(node, t, peak, dur) {
+    const g = node.gain;
+    g.cancelScheduledValues(t); g.setValueAtTime(Math.max(0.0001, g.value), t);
+    g.linearRampToValueAtTime(peak, t + 0.003); g.exponentialRampToValueAtTime(0.0001, t + dur);
+  }
+
   update(car, cam, camObjOrDist, focusPos, speed, sim, visuals) {
     if (!this.ctx || !this.on) return;
     if (this.ctx.state === 'suspended') {
@@ -682,24 +692,16 @@ export class EngineAudio {
         this.engineGain.gain.setTargetAtTime(0.42 + curThrottle * 0.35, t + 0.050, 0.010);
 
         // Detonación seca y potente de escape
-        this.crackleGain.gain.cancelScheduledValues(t);
-        this.crackleGain.gain.setValueAtTime(0.3, t);
-        this.crackleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.035);
+        this.crackle(t, 0.1, 0.035);
 
         // Thump grave de par motor (120 Hz)
-        this.thudGain.gain.cancelScheduledValues(t);
-        this.thudGain.gain.setValueAtTime(0.75, t);
-        this.thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.048);
+        this.burst(this.thudGain, t, 0.75, 0.048);
       } else if (curGear < this.prevGear) {
         // Reducción: golpe/blip de revoluciones + ladrido grave de escape
         this.downshiftBlipUntil = t + 0.085;
-        this.thudGain.gain.cancelScheduledValues(t);
-        this.thudGain.gain.setValueAtTime(0.80, t);
-        this.thudGain.gain.exponentialRampToValueAtTime(0.001, t + 0.080);
+        this.burst(this.thudGain, t, 0.8, 0.08);
 
-        this.crackleGain.gain.cancelScheduledValues(t);
-        this.crackleGain.gain.setValueAtTime(0.25, t);
-        this.crackleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.050);
+        this.crackle(t, 0.08, 0.05);
       }
       this.prevGear = curGear;
     }
@@ -709,22 +711,11 @@ export class EngineAudio {
 
     // Wastegate al soltar acelerador bruscamente
     if (this.prevThrottle > 0.55 && curThrottle < 0.20 && carSpeed > 15) {
-      this.wastegateGain.gain.cancelScheduledValues(t);
-      this.wastegateGain.gain.setValueAtTime(0.22, t);
-      this.wastegateGain.gain.exponentialRampToValueAtTime(0.001, t + 0.24);
+      this.burst(this.wastegateGain, t, 0.22, 0.24);
     }
     this.prevThrottle = curThrottle;
 
-    // Petardeo continuo en retención a altas RPM
-    if (curThrottle < 0.18 && (car.rpm || 0) > 7200 && carSpeed > 15 && !inShiftCut) {
-      if (t - this.lastCrackleTime > 0.035 + Math.random() * 0.040) {
-        this.lastCrackleTime = t;
-        const popIntensity = 0.15 + Math.random() * 0.22;
-        this.crackleGain.gain.cancelScheduledValues(t);
-        this.crackleGain.gain.setValueAtTime(popIntensity, t);
-        this.crackleGain.gain.exponentialRampToValueAtTime(0.001, t + 0.024);
-      }
-    }
+    // (14/10: fuera el petardeo continuo en retención: ráfagas de ruido cada 35-75 ms que sonaban a fallo de audio)
 
     // ==========================================
     // 4. MOTOR PRINCIPAL: CÁLCULO DE FRECUENCIAS Y DOPPLER

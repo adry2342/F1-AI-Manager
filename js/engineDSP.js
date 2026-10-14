@@ -1,6 +1,6 @@
 // Motor V6 por explosiones: en vez de osciladores (sonaba a sintetizador), un tren de pulsos de presión —uno por
 // cilindro, 3 por vuelta del cigüeñal— con pequeñas diferencias entre cilindros y de un ciclo a otro, que pasa por
-// el escape (resonancias + tubo). Con gas los pulsos son densos, graves y con cuerpo; sin gas, suaves y con petardeo.
+// el escape (resonancias + tubo). Con gas los pulsos son densos, graves y con cuerpo; sin gas, suaves.
 // Es una función pura para poder usarla dentro de un AudioWorklet y también en node (tools/engineWav.mjs).
 export function makeV6(sr, seed = 1) {
   let rs = seed >>> 0 || 1;
@@ -49,8 +49,7 @@ export function makeV6(sr, seed = 1) {
         // frecuencia de encendido, el tono grave que se oye por debajo del aullido
         const bank = k % 2 ? 1 - 0.26 * load : 1 + 0.26 * load;
         let a = cyl[k] * bank * onLoad * (0.90 + 0.20 * rnd()) * (1 - cut);
-        // sin gas y con vueltas: petardeo en el escape
-        if (load < 0.15 && rpm > 8000 && rnd() < 0.05) a = 1.3 + rnd() * 0.6;
+        // (14/10: sin petardeo en retención: explosiones sueltas de 1,3-1,9 veces una normal que sonaban a chisporroteo)
         env += a;
         nEnv += a * (0.35 + 0.5 * (1 - load) + 0.28 * load);
       }
