@@ -46,10 +46,12 @@ const server = http.createServer((req, res) => {
     json(res, { state: tunnel.state, url: tunnel.url, err: tunnel.err, got: tunnel.got, size: tunnel.size });
     return;
   }
-  let p = decodeURIComponent(url.pathname);
+  let p; try { p = decodeURIComponent(url.pathname); } catch { res.writeHead(400); res.end(); return; }
   if (p.endsWith('/')) p += 'index.html';
+  // solo lo que necesita el juego: nada de .git, tools, etc. (con el túnel esto se ve desde Internet)
+  if (!/^\/(index\.html|favicon\.ico|js\/[\w.-]+\.js|vendor\/[\w./-]+)$/.test(p) || p.includes('..')) { res.writeHead(404); res.end(); return; }
   const file = path.normalize(path.join(ROOT, p));
-  if (!file.startsWith(ROOT)) { res.writeHead(403); res.end(); return; }
+  if (!file.startsWith(ROOT + path.sep)) { res.writeHead(403); res.end(); return; }
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('No encontrado'); return; }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream', 'Cache-Control': 'no-store' });
