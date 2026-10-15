@@ -196,6 +196,7 @@ export class Sim {
     const T = this.T;
     this.session = { id, ...SESSIONS[id], phase: 'run', t0: 0, done: false };
     this.gravel = []; this.barrierHits = [];
+    this.autoMgr = false;   // «Saltar»: los equipos del mánager los lleva la IA hasta el final de la sesión (ver mgrHand)
     this.t = 0; this.flag = 'GREEN'; this.vscT = 0; this.initWeather(id); this.fastest = null; this.sessionBestSec = null; this.zoneBest = null; this.bestCP = null;
     const isRace = id === 'RACE';
     const active = this.activeCars(id);
@@ -232,6 +233,15 @@ export class Sim {
     return this.cars.slice();
   }
 
+  // ¿las decisiones de este coche las toma el mánager? (no mientras se salta la sesión: entonces lo lleva la IA)
+  mgrHand(car) { return !!car.mgr && !this.autoMgr; }
+  // plan de la IA para un coche del mánager a mitad de sesión (al darle a «Saltar»)
+  autoPlan(car) {
+    const id = this.session.id, p = this.makePlan(car, id);
+    // clasificación con tiempo ya marcado: solo queda la salida final
+    if (!isFP(id) && isFinite(car.best)) p.idx = 1;
+    return p;
+  }
   makePlan(car, id) {
     const r = this.rng;
     if (isFP(id)) {
@@ -517,11 +527,12 @@ export class Sim {
         continue;
       }
       if (car.state !== 'garage') { anyOut = true; continue; }
-      if (car.mgr) {
+      if (this.mgrHand(car)) {
         const go = car.mgr.go;
         if (go && !over) { this.leaveGarage(car, go); car.mgr.go = null; }
         continue;
       }
+      if (!car.plan && car.mgr) car.plan = this.autoPlan(car);
       const p = car.plan; if (!p || over) continue;
       const run = p.runs[p.idx]; if (!run) continue;
       if (run.go === 0) run.go = this.t + (p.gap ?? 30) + this.rng() * 40;
@@ -540,14 +551,14 @@ export class Sim {
     car.sector = 0; car.sectorStart = this.t; car.curSectors = [0, 0, 0];
     const T = this.T;
     const wc = idealTyre(car.wetEst = this.wx.wet);
-    if (car.mgr) { /* goma que elige el mánager */ } else if (wc) run = { ...run, c: wc }; else if (COMPOUNDS[run.c].wet) run = { ...run, c: 'S' };
-    const fresh = car.mgr ? run.fresh || car.tyre.c !== run.c : run.kind === 'quali' || car.tyre.c !== run.c || car.tyre.wear > 0.5;
+    if (this.mgrHand(car)) { /* goma que elige el mánager */ } else if (wc) run = { ...run, c: wc }; else if (COMPOUNDS[run.c].wet) run = { ...run, c: 'S' };
+    const fresh = this.mgrHand(car) ? run.fresh || car.tyre.c !== run.c : run.kind === 'quali' || car.tyre.c !== run.c || car.tyre.wear > 0.5;
     if (fresh) car.tyre = { c: run.c, wear: 0, temp: 0.55, age: 0, used: car.tyre.used };
     car.tyre.used.add(run.c);
     car.fuel = run.fuel; car.run = run; car.runLaps = 0; car.runGood = false;
     car.state = 'track'; car.inPit = true; car.pitPhase = 'out'; car.d = T.pit.d - 3.5; car.v = 0; car.psi = 0; car.beta = 0;
     const box = T.pit.boxes[TEAMS.indexOf(car.team)]; car.s = box.s;
-    car.lapKind = 'out'; car.lapClean = false; car.pitReq = false; car.lapW0 = car.tyre.wear; car.pushN = 0; car.testRun = !!(car.mgr && run.test);
+    car.lapKind = 'out'; car.lapClean = false; car.pitReq = false; car.lapW0 = car.tyre.wear; car.pushN = 0; car.testRun = !!(this.mgrHand(car) && run.test);
     this.rebuildProfile(car);
     this.emit({ type: 'leave', car });
   }
@@ -606,7 +617,7 @@ export class Sim {
     this.senseWet(car);
     const race = ss.id === 'RACE';
     const i = T.idx(car.s);
-    if (race && car.mgr && car.strategy) this.mgrPit(car);
+    if (race && this.mgrHand(car) && car.strategy) this.mgrPit(car);
     if (car.inPit) return;
     const P = Math.max(15, Math.min(55, car.v * 0.8));
     const sP = car.s + P; const lineP = car.line[T.idx(sP)];
@@ -1414,7 +1425,14 @@ export class Sim {
         const box = this.T.pit.boxes[TEAMS.indexOf(car.team)], L = box.s > this.T.L * 0.5 ? car.lap + 1 : car.lap;
         if (!car.strategy.stints[car.stint]) car.strategy.stints.push({ c: car.tyre.c, from: L, to: this.raceLaps });
         this.mgrFixPlan(car, L);
-        const c = car.strategy.stints[car.stint].c;
+        let c = car.strategy.stints[car.stint].c;
+        if (this.autoMgr) {
+          // simulando, la IA decide por el tiempo como en los demás equipos: gomas de agua si llueve, lisos al secarse
+          const left = this.raceLaps - L, wet = idealTyre(Math.max(car.wetEst || 0, this.wx.line));
+          const wc = car.wxC === 'slick' ? (left < this.raceLaps * 0.42 ? 'S' : left < this.raceLaps * 0.7 ? 'M' : 'H') : car.wxC || (wet && !COMPOUNDS[c].wet ? wet : null);
+          if (wc) { c = wc; car.strategy.stints = car.strategy.stints.slice(0, car.stint).concat([{ c, from: L, to: this.raceLaps }]); }
+          car.wxC = null;
+        }
         M.stopNow = false;
         M.stopsLog.push({ lap: L, from: car.tyre.c, c, wear: car.tyre.wear, time: car.stopTime, pos: car.pos });
         car.tyre = { c, wear: 0, temp: 0.6, age: 0, used: car.tyre.used };
@@ -1579,7 +1597,7 @@ export class Sim {
     const flag = ss.phase !== 'run';
     if (flag && !car.inPit) car.finished = true;   // cruza la meta con la bandera: bandera de cuadros en la tabla
     if (car.lapKind === 'out' && car.inPit) { car.runLaps--; return; }
-    if (car.mgr) {
+    if (this.mgrHand(car)) {
       const M = car.mgr, was = car.lapKind;
       // lanzadas: la que sale con error o tráfico no cuenta y se repite (salvo que el mánager diga que vale: aviso 'badlap')
       if (was === 'push') {
@@ -1680,7 +1698,7 @@ export class Sim {
     const st = car.strategy.stints[car.stint];
     if (!st) return;
     const needNew = car.tyre.used.size < 2 && !car.tyre.used.has('I') && !car.tyre.used.has('W');
-    if (car.mgr) return this.mgrPit(car);
+    if (this.mgrHand(car)) return this.mgrPit(car);
     let want = false;
     if (car.stint < car.strategy.stints.length - 1 && car.lap + 1 >= st.to) want = true;
     if (car.tyre.wear > 0.8 && lapsLeft > 2) want = true;

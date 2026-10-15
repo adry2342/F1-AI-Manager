@@ -404,7 +404,8 @@ export class Manager {
 
   // ------------------------------------------------------------------ avisos (decisiones que esperan respuesta)
   alert(car, key, title, text, acts, opts = {}) {
-    if (this.headless || this.alerts.some((a) => a.key === car.code + key)) return;
+    // (simulando el resto de la sesión no hay nadie en el muro: decide la IA)
+    if (this.headless || this.sim.autoMgr || this.alerts.some((a) => a.key === car.code + key)) return;
     const al = { id: ++this.seq, car, key: car.code + key, title, text, acts, born: performance.now(), ttl: (opts.ttl || 16) * 1000, valid: opts.valid };
     this.alerts.unshift(al); if (this.alerts.length > 4) this.alerts.length = 4;
     if (opts.voice) this.say(car, opts.voice, 3);

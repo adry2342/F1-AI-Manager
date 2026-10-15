@@ -97,7 +97,15 @@ async function main(choice) {
       ui.syncButtons();
     },
     managers: [],
-    doSkip() { if (!sim.session?.done) { sim.gridHold = false; this.skipping = true; document.getElementById('skipBar')?.remove(); const d = document.createElement('div'); d.id = 'skipBar'; d.innerHTML = '<b>Simulando el resto de la sesión…</b><div class="track"><i></i></div>'; document.getElementById('hud').appendChild(d); } },
+    doSkip() {
+      if (sim.session?.done) return;
+      // hasta el final de la sesión los muros no deciden: sus coches salen, paran y cambian gomas como los de la IA
+      sim.gridHold = false; sim.autoMgr = true; this.skipping = true;
+      for (const m of this.managers) m.alerts = [];
+      document.getElementById('skipBar')?.remove(); const d = document.createElement('div'); d.id = 'skipBar';
+      d.innerHTML = `<b>Simulando el resto de la sesión…</b>${this.managers.length ? '<small>Tu equipo lo lleva la IA hasta el final</small>' : ''}<div class="track"><i></i></div>`;
+      document.getElementById('hud').appendChild(d);
+    },
     doNext() {
       const cur = sim.session?.id;
       let nx = cur ? NEXT[cur] : 'FP';

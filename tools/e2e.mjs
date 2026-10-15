@@ -106,6 +106,11 @@ for (const want of ['FP', 'FP2', 'Q1', 'Q2', 'Q3', 'RACE']) {
   await click('#bSkip');
   await p.waitForSelector('.modal #mNext', { timeout: 400000 });
   check(`resultados ${want}`, true);
+  // saltando, el equipo del mánager lo lleva la IA: sale a pista y marca vueltas como los demás
+  if (a.mode === 'mgr' && want !== 'RACE') {
+    const n = await ev((s) => window.__app.manager.cars.filter((c) => !c.out).map((c) => c.mgr.laps.filter((l) => l.s === s).length), want);
+    check(`mánager: al saltar ${want} su equipo da vueltas`, n.every((x) => x > 0), n.join('/'));
+  }
   await click('#mLearn'); check(`aprendizaje desde resultados ${want}`, !!(await p.$('#mBack'))); await click('#mBack');
   if (want === 'RACE') break;
   if (want === 'FP') {
