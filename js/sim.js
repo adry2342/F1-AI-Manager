@@ -22,8 +22,10 @@ export let DT = 1 / 60;
 export function setDT(dt) { DT = dt; }
 
 export function mulberry(seed) {
-  let a = seed >>> 0;
-  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  // (el estado va en f.s y no escondido en el cierre: así se puede copiar al resincronizar el multijugador)
+  const f = () => { let a = f.s | 0; a = (a + 0x6D2B79F5) | 0; f.s = a; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  f.s = seed >>> 0;
+  return f;
 }
 
 // Elipse de agarre: fracción del agarre longitudinal que queda libre cuando la curva ya usa r del lateral
@@ -632,7 +634,8 @@ export class Sim {
       // (mánager: con pelea agresiva no cede en libres ni en clasificación; prudente se aparta ante cualquiera que llegue lanzado)
       const slowLap = !race && fightM !== 'hard' && o.lapKind === 'push' && (car.lapKind !== 'push' || worse || (fightM === 'calm' && o.v > car.v + 2));
       // órdenes de equipo (mánager): deja pasar al compañero que viene detrás
-      const swap = race && this.teamOrder?.yield === car && o.team === car.team && rel > -60;
+      // (una orden por equipo: en multijugador hay varios muros)
+      const swap = race && this.teamOrders?.[car.team.id]?.yield === car && o.team === car.team && rel > -60;
       // libres: se apartan para el coche del mánager que viene lanzado en modo consistente (si no, ~45 % de sus vueltas con tráfico)
       const courtesy = !race && !car.mgr && o.testRun && o.lapKind === 'push' && rel > -110;
       if (courtesy && o.v > car.v - 8) { yieldTo = o; break; }
@@ -641,7 +644,7 @@ export class Sim {
     // atacar
     let tgt = null;
     // órdenes de equipo «mantener posiciones»: no ataca al compañero
-    const hold = race && car.mgr && this.teamOrder?.hold;
+    const hold = race && car.mgr && this.teamOrders?.[car.team.id]?.hold;
     for (const { o, rel } of near) {
       if (rel <= 0 || rel > 110) continue;
       if (hold && o.team === car.team) continue;

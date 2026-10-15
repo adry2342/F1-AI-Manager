@@ -49,16 +49,19 @@ const tyre = (c, extra = '') => `<span class="ty" style="--tc:${COMPOUNDS[c].col
 const med = (v) => { if (!v.length) return NaN; v = v.slice().sort((a, b) => a - b); return v[v.length >> 1]; };
 
 export class Manager {
-  constructor(sim, dir, teamId, app) {
-    this.sim = sim; this.dir = dir; this.app = app; this.teamId = teamId;
+  // opts.headless: muro de otro jugador (multijugador). Su lógica corre igual en todas las máquinas (para que la simulación
+  // sea idéntica), pero sin panel, avisos ni radio: eso solo lo ve quien lleva el equipo
+  constructor(sim, dir, teamId, app, opts = {}) {
+    this.sim = sim; this.dir = dir; this.app = app; this.teamId = teamId; this.headless = !!opts.headless;
     this.cars = sim.cars.filter((c) => c.team.id === teamId);
     for (const c of this.cars) {
       c.mgr = { pace: 'normal', ers: 'normal', fight: 'normal', laps: [], stopsLog: [], stopNow: false, boxReq: false, go: null, next: { c: 'M', fresh: true, kind: 'free', laps: 8, test: false, cool: true, repeat: true }, draft: null, owed: 0, simLaps: 0 };
       c.trim = 0; c.susp = 0;
     }
-    sim.managed = teamId; sim.teamOrder = { hold: false, yield: null };
+    sim.managed = teamId; this.ord = { hold: false, yield: null };
     this.alerts = []; this.log = []; this.sel = 0; this.gOpen = false; this.gTab = 'setup'; this.stSel = null; this.pf = 'all'; this.pv = 'chart'; this.ps = 'all'; this.pg = 'setup'; this.po = 'order'; this.pt = 'all'; this.pw = 'dry';
     this.pauseOnAlert = false; this.t = 0; this.gt = 0; this.seq = 0; this.jobs = new Map();
+    if (this.headless) { sim.on((e) => this.onEvent(e)); return; }
     document.body.classList.add('mgr');
     const hud = document.getElementById('hud');
     this.el = document.createElement('div'); this.el.id = 'mgr'; hud.appendChild(this.el);
@@ -78,30 +81,73 @@ export class Manager {
   }
 
   get car() { return this.cars[this.sel]; }
+  // órdenes de equipo: una por equipo (en multijugador hay varios muros en la misma carrera)
+  get ord() { return this.sim.teamOrders?.[this.teamId]; }
+  set ord(v) { (this.sim.teamOrders ||= {})[this.teamId] = v; }
   race() { return this.sim.session?.id === 'RACE'; }
   onGrid() { const s = this.sim.session; return s?.id === 'RACE' && s.phase === 'grid' && this.sim.gridHold; }
   canSetup(c) { const s = this.sim.session; if (!s || s.done) return false; return s.id === 'RACE' ? this.onGrid() : c.state === 'garage' && !c.out; }
-  say(car, lines, prio = 2) { this.app.radio?.say(car, lines, prio); }
+  say(car, lines, prio = 2) { if (!this.headless) this.app.radio?.say(car, lines, prio); }
   note(car, txt) { this.log.push({ s: this.sim.session?.id, lap: Math.max(0, car.lap), car, txt, pos: car.pos, t: this.sim.t }); }
 
   toggleGarage(open = !this.gOpen, tab) {
+    if (this.headless) return;
     this.gOpen = open; if (tab) this.gTab = tab;
     this.gel.classList.toggle('hidden', !open); document.body.classList.toggle('garageOpen', open);
     this.gHTML = null; if (open) this.renderGarage(); this.render();
   }
 
   // ------------------------------------------------------------------ acciones
+  // clic en el muro o el garaje: lo que solo cambia la vista se hace aquí; lo que toca la simulación es un comando
+  // (en multijugador va al anfitrión, que lo reparte a todos en el mismo instante de la simulación)
   onAct(e) {
     const b = e.target.closest('[data-a]'); if (!b || b.disabled) return;
     e.preventDefault();
     const sim = this.sim, a = b.dataset.a, v = b.dataset.v;
-    const car = b.dataset.i != null ? sim.cars[+b.dataset.i] : this.car, M = car?.mgr;
-    const N = { push: 'Atacar', normal: 'Normal', save: 'Cuidar', boost: 'Ataque', charge: 'Recargar', calm: 'Prudente', hard: 'Agresivo' };
+    const car = b.dataset.i != null ? sim.cars[+b.dataset.i] : this.car;
     switch (a) {
       case 'sel': this.sel = +v; this.stSel = null; this.dir.setFocus(this.car); break;
       case 'focus': this.dir.setFocus(car); break;
+      case 'garage': this.toggleGarage(); break;
+      case 'gclose': this.toggleGarage(false); break;
+      case 'gtab': this.gTab = v; break;
+      case 'pauseAl': this.pauseOnAlert = !this.pauseOnAlert; break;
+      case 'pt': this.pt = v; break;
+      case 'pw': this.pw = v; break;
+      case 'stsel': this.stSel = +v; break;
+      case 'pf': this.pf = v; break;
+      case 'pv': this.pv = v; break;
+      case 'ps': this.ps = v; break;
+      case 'pg': this.pg = v; break;
+      case 'po': this.po = v; break;
+      case 'stdrag': this.startDrag(e, car, +v); return;
+      case 'al': {
+        const al = this.alerts.find((x) => x.id === +v); if (!al) break;
+        const act = al.acts[+b.dataset.k]; this.alerts = this.alerts.filter((x) => x !== al);
+        this.cmd({ a: 'op', op: act.op || null, i: al.car.i, txt: `${al.title}: ${act.l}` });
+        if (act.reply) this.say(al.car, [['e', act.reply]], 3);
+        if (this.pausedBy === al.id && this.app.speed === 0) this.app.reqSpeed(this.app.lastSpeed || 1);
+        break;
+      }
+      case 'stc': this.cmd({ a, v, x: +b.dataset.k, i: car.i }); break;
+      case 'start': if (this.sim.gridReady?.has(this.teamId)) break; this.toggleGarage(false); this.cmd({ a }); break;
+      default: this.cmd({ a, v, x: b.dataset.k, i: car?.i });
+    }
+    this.gHTML = null; this.render(); if (this.gOpen) this.renderGarage();
+  }
+  cmd(c) { if (this.app.mp) this.app.mp.cmd({ ...c, k: 'mgr', team: this.teamId }); else this.exec(c); }
+
+  // aplica un comando del muro (en todas las máquinas a la vez en multijugador)
+  exec(c) {
+    const sim = this.sim, a = c.a, v = c.v;
+    const car = c.i != null ? sim.cars[c.i] : this.car, M = car?.mgr;
+    if (car && car.team.id !== this.teamId) return;
+    const N = { push: 'Atacar', normal: 'Normal', save: 'Cuidar', boost: 'Ataque', charge: 'Recargar', calm: 'Prudente', hard: 'Agresivo' };
+    this.execing = true;
+    try {
+    switch (a) {
       case 'lev': {
-        const k = b.dataset.k; if (M[k] === v) break;
+        const k = c.x; if (!LEVERS.some(([x]) => x === k) || M[k] === v) break;
         M[k] = v; if (k === 'pace') sim.rebuildProfile(car);
         this.note(car, `${{ pace: 'Ritmo', ers: 'Motor', fight: 'Pelea' }[k]}: ${N[v] || 'Normal'}`);
         if (this.race() && k === 'pace') this.say(car, [['e', v === 'push' ? 'Modo ataque: todo lo que tengas.' : v === 'save' ? 'Gestiona las gomas, levanta en las rápidas.' : 'Vuelve al ritmo normal.'], ['d', 'Copiado.']], 1);
@@ -116,22 +162,20 @@ export class Manager {
         if (M.boxReq) this.say(car, [['e', 'Box, box. Vuelve al garaje.']], 1);
         break;
       }
-      case 'order': this.setOrder(v); break;
-      case 'garage': this.toggleGarage(); break;
-      case 'gclose': this.toggleGarage(false); break;
-      case 'gtab': this.gTab = v; break;
-      case 'start':
-        sim.gridHold = false; this.toggleGarage(false);
-        for (const c of this.cars) c.mgr.plan0 = c.strategy.stints.map((x) => ({ ...x }));
-        for (const c of this.cars) this.note(c, `Sale con ${COMPOUNDS[c.tyre.c].name.toLowerCase()} · ${c.strategy.stints.map((x) => x.c).join('-')}`);
+      case 'order': if (this.race()) this.setOrder(v); break;
+      case 'start': {
+        // la salida se da cuando todos los muros están listos (en solitario, al momento)
+        if (!this.onGrid()) break;
+        const ready = (sim.gridReady ||= new Set()); ready.add(this.teamId);
+        const all = this.app.managers || [this];
+        if (all.every((m) => ready.has(m.teamId) || sim.dropped?.has(m.teamId))) { sim.gridHold = false; for (const m of all) m.release(); }
         break;
-      case 'pauseAl': this.pauseOnAlert = !this.pauseOnAlert; break;
-      case 'al': {
-        const al = this.alerts.find((x) => x.id === +v); if (!al) break;
-        const act = al.acts[+b.dataset.k]; this.alerts = this.alerts.filter((x) => x !== al);
-        act.f?.(); this.note(al.car, `${al.title}: ${act.l}`);
-        if (act.reply) this.say(al.car, [['e', act.reply]], 3);
-        if (this.pausedBy === al.id && this.app.speed === 0) this.app.setSpeed(this.app.lastSpeed || 1);
+      }
+      case 'op': this.runOp(c.op); if (car && c.txt) this.note(car, String(c.txt).slice(0, 80)); break;
+      case 'stmove': {
+        const P = this.plan(car), k = +c.x; if (!P.st[k + 1]) break;
+        const [lo, hi] = this.stopRange(car, P, k); P.st[k].to = Math.max(lo, Math.min(hi, Math.round(+v)));
+        this.afterEdit(car, 'Mueve parada');
         break;
       }
       // garaje
@@ -146,21 +190,37 @@ export class Manager {
       case 'simnow': this.applySim(car); break;
       case 'nlaps': M.next.laps = Math.max(1, Math.min(30, (M.next.laps || 1) + +v)); break;
       case 'ntest': M.next.test = v === '1'; break;
-      case 'pt': this.pt = v; break;
-      case 'pw': this.pw = v; break;
-      case 'stsel': this.stSel = +v; break;
-      case 'stc': this.setCompound(car, +b.dataset.k, v); break;
+      case 'stc': if (TYRES.includes(v)) this.setCompound(car, +c.x, v); break;
       case 'stadd': this.addStop(car); break;
       case 'stdel': this.delStop(car, +v); break;
       case 'stsug': { const P = this.plan(car), s = this.suggest(car); if (s) { P.st.splice(P.k0, P.st.length - P.k0, ...s.st); this.afterEdit(car, 'Plan sugerido'); } break; }
-      case 'pf': this.pf = v; break;
-      case 'pv': this.pv = v; break;
-      case 'ps': this.ps = v; break;
-      case 'pg': this.pg = v; break;
-      case 'po': this.po = v; break;
-      case 'stdrag': this.startDrag(e, car, +v); return;
     }
-    this.gHTML = null; this.render(); if (this.gOpen) this.renderGarage();
+    } finally { this.execing = false; }
+    if (!this.headless) { this.gHTML = null; this.render(); if (this.gOpen) this.renderGarage(); }
+  }
+
+  // salida dada: el plan con el que sale cada coche (para el resumen)
+  release() {
+    this.toggleGarage(false);
+    for (const c of this.cars) c.mgr.plan0 = c.strategy.stints.map((x) => ({ ...x }));
+    for (const c of this.cars) this.note(c, `Sale con ${COMPOUNDS[c.tyre.c].name.toLowerCase()} · ${c.strategy.stints.map((x) => x.c).join('-')}`);
+  }
+
+  // respuestas de los avisos: operaciones con nombre (no funciones) para poder mandarlas por la red
+  runOp(op) {
+    if (!Array.isArray(op)) return;
+    const [name, i, x, y] = op, car = this.sim.cars[i];
+    if (!car || car.team.id !== this.teamId) return;
+    const M = car.mgr;
+    switch (name) {
+      case 'order': if (this.race() && ['free', 'hold', 'swap'].includes(x)) this.setOrder(x); break;
+      case 'stopNow': this.sim.mgrStopNow(car, x || undefined); car.pitReq = true; break;
+      case 'set': if (['pace', 'ers', 'fight', 'nextLap'].includes(x)) M[x] = y; break;
+      case 'next': Object.assign(M.next, x); break;
+      case 'boxNow': M.boxReq = true; car.pitReq = true; break;
+      case 'okLap': { const run = car.run || {}; car.pushN = (car.pushN || 0) + 1; if (run.laps && car.pushN >= run.laps && car.lapKind !== 'in') { car.lapKind = 'in'; car.pitReq = true; } break; }
+      case 'qout': Object.assign(M.next, { c: 'S', fresh: true, kind: 'quali', laps: 1, test: false }); this.goOut(car); break;
+    }
   }
 
   // carrera: «para en esta vuelta» (o cancelar la parada, sea la pedida o la del plan)
@@ -198,7 +258,7 @@ export class Manager {
   }
   setOrder(v) {
     const o = this.sim.raceOrder || [], [a, b] = this.cars, lead = o.indexOf(a) < o.indexOf(b) ? a : b, trail = lead === a ? b : a;
-    this.sim.teamOrder = { hold: v !== 'free', yield: v === 'swap' ? lead : null, trail: v === 'swap' ? trail : null };
+    this.ord = { hold: v !== 'free', yield: v === 'swap' ? lead : null, trail: v === 'swap' ? trail : null };
     if (v === 'swap') { this.say(lead, [['e', `${lead.drv.first}, deja pasar a ${trail.drv.last}. Es una orden de equipo.`], ['d', '…Entendido.']], 3); this.note(lead, `Orden: deja pasar a ${trail.code}`); }
     else if (v === 'hold') { for (const c of this.cars) this.say(c, [['e', 'Mantened posiciones. No hay que pelear entre vosotros.']], 2); this.note(lead, 'Orden: mantener posiciones'); }
     else this.note(lead, 'Orden: pilotos libres');
@@ -206,8 +266,15 @@ export class Manager {
 
   // ------------------------------------------------------------------ plan de paradas
   plan(car) {
+    if (this.drag?.car === car) return this.drag.P;   // arrastrando una parada: copia local hasta soltarla
     if (this.race() && car.strategy) return { st: car.strategy.stints, k0: this.onGrid() ? 0 : car.stint, live: true };
-    const M = car.mgr; if (!M.draft || M.draft[M.draft.length - 1].to !== this.sim.raceLaps) M.draft = this.suggest(car, true)?.st || [{ c: 'M', from: 0, to: this.sim.raceLaps }];
+    const M = car.mgr;
+    if (!M.draft || M.draft[M.draft.length - 1].to !== this.sim.raceLaps) {
+      const d = this.suggest(car, true)?.st || [{ c: 'M', from: 0, to: this.sim.raceLaps }];
+      // (en multijugador el borrador solo se guarda dentro de un comando: si no, cada máquina lo fijaría en un momento distinto)
+      if (this.app.mp && !this.execing) return { st: d, k0: 0, live: false };
+      M.draft = d;
+    }
     return { st: M.draft, k0: 0, live: false };
   }
   // límites de una parada (entre la tanda k y la k+1)
@@ -252,13 +319,21 @@ export class Manager {
     const svg = e.target.closest('svg'); if (!svg) return;
     const r = svg.getBoundingClientRect(), N = this.sim.raceLaps, vb = svg.viewBox.baseVal;
     this.dragging = true;
+    // se arrastra una copia del plan; al soltar, la parada se mueve con un comando (igual en todas las máquinas)
+    const P0 = this.plan(car), to0 = P0.st[k]?.to;
+    this.drag = { car, P: { ...P0, st: P0.st.map((x) => ({ ...x })) } };
     const move = (ev) => {
       const P = this.plan(car); if (!P.st[k + 1]) return;
       const x = ((ev.clientX - r.left) / r.width) * vb.width, lap = Math.round(((x - 34) / (vb.width - 50)) * N);
       const [lo, hi] = this.stopRange(car, P, k), l = Math.max(lo, Math.min(hi, lap));
       if (l !== P.st[k].to) { P.st[k].to = l; this.fixPlan(car, P); this.gHTML = null; this.renderGarage(true); }
     };
-    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this.dragging = false; this.afterEdit(car, 'Mueve parada'); this.gHTML = null; this.renderGarage(); };
+    const up = () => {
+      window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); this.dragging = false;
+      const to = this.drag?.P.st[k]?.to; this.drag = null;
+      if (to != null && to !== to0) this.cmd({ a: 'stmove', i: car.i, x: k, v: to });
+      this.gHTML = null; this.renderGarage();
+    };
     window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
   }
 
@@ -329,14 +404,14 @@ export class Manager {
 
   // ------------------------------------------------------------------ avisos (decisiones que esperan respuesta)
   alert(car, key, title, text, acts, opts = {}) {
-    if (this.alerts.some((a) => a.key === car.code + key)) return;
+    if (this.headless || this.alerts.some((a) => a.key === car.code + key)) return;
     const al = { id: ++this.seq, car, key: car.code + key, title, text, acts, born: performance.now(), ttl: (opts.ttl || 16) * 1000, valid: opts.valid };
     this.alerts.unshift(al); if (this.alerts.length > 4) this.alerts.length = 4;
     if (opts.voice) this.say(car, opts.voice, 3);
-    if (this.pauseOnAlert && this.app.speed > 0) { this.pausedBy = al.id; this.app.setSpeed(0); }
+    if (this.pauseOnAlert && this.app.speed > 0) { this.pausedBy = al.id; this.app.reqSpeed(0); }
     this.render();
   }
-  stopAct(car, c, l) { return { l, f: () => { this.sim.mgrStopNow(car, c); car.pitReq = true; }, reply: `Box, box. Ponemos ${COMPOUNDS[c || car.strategy.stints[car.stint + 1]?.c || car.tyre.c].name.toLowerCase()}.` }; }
+  stopAct(car, c, l) { return { l, op: ['stopNow', car.i, c], reply: `Box, box. Ponemos ${COMPOUNDS[c || car.strategy.stints[car.stint + 1]?.c || car.tyre.c].name.toLowerCase()}.` }; }
   around(c) { const o = this.sim.raceOrder || [], k = o.indexOf(c); return { ah: k > 0 ? o[k - 1] : null, bh: k >= 0 && k < o.length - 1 ? o[k + 1] : null }; }
 
   onEvent(e) {
@@ -348,7 +423,7 @@ export class Manager {
     if (e.type === 'sessionEnd' && isFP(e.id)) for (const m of this.cars) this.applySim(m);
     if (e.type === 'session' && !isFP(e.id)) for (const m of this.cars) this.applySim(m);
     if (e.type === 'session') {
-      this.alerts = []; sim.teamOrder = { hold: false, yield: null };
+      this.alerts = []; this.ord = { hold: false, yield: null }; sim.gridReady = new Set();
       for (const m of this.cars) { Object.assign(m.mgr.next, isFP(e.id) ? { kind: 'free' } : { kind: 'quali', laps: 1 }); m.mgr.next.c = isFP(e.id) ? 'M' : 'S'; m.mgr.next.fresh = true; m.mgr.next.test = false; }
       if (e.id === 'RACE') {
         sim.gridHold = true;
@@ -367,21 +442,21 @@ export class Manager {
       for (const m of this.cars) {
         if (m.retired || m.finished || COMPOUNDS[m.tyre.c].wet) continue;
         const txt = `${e.what === 'rainStart' ? 'Empieza a llover' : 'Llueve más'} (${W.target > 0.6 ? 'fuerte' : W.target > 0.3 ? 'moderada' : 'débil'}).${mins ? ` Cambia en ~${mins} min.` : ''}`;
-        if (m.state === 'garage') this.alert(m, 'rainG', 'LLUVIA', txt, [{ l: 'Intermedios para salir', f: () => { m.mgr.next.c = 'I'; m.mgr.next.fresh = true; } }, { l: 'Lluvia extrema', f: () => { m.mgr.next.c = 'W'; m.mgr.next.fresh = true; } }, { l: 'Ignorar' }]);
+        if (m.state === 'garage') this.alert(m, 'rainG', 'LLUVIA', txt, [{ l: 'Intermedios para salir', op: ['next', m.i, { c: 'I', fresh: true }] }, { l: 'Lluvia extrema', op: ['next', m.i, { c: 'W', fresh: true }] }, { l: 'Ignorar' }]);
         else if (race) this.alert(m, 'rain', 'LLUVIA', txt, [this.stopAct(m, 'I', 'Box: intermedios'), this.stopAct(m, 'W', 'Box: lluvia'), { l: 'Seguimos con lisos', reply: 'Seguimos con lisos. Dinos cómo está.' }], { ttl: 20, voice: [['d', 'Está empezando a llover.']] });
-        else this.alert(m, 'rain', 'LLUVIA', txt, [{ l: 'Box ya', f: () => { m.mgr.boxReq = true; m.pitReq = true; }, reply: 'Box, box.' }, { l: 'Sigue' }]);
+        else this.alert(m, 'rain', 'LLUVIA', txt, [{ l: 'Box ya', op: ['boxNow', m.i], reply: 'Box, box.' }, { l: 'Sigue' }]);
       }
       return;
     }
     if (e.type === 'badlap' && mine) {
       const run = c.run || {};
       this.alert(c, 'bad' + c.lap, e.why === 'tráfico' ? 'TRÁFICO' : 'VUELTA MALA', `${c.code}: lanzada ${e.why === 'tráfico' ? 'con tráfico' : 'con un error'}. No cuenta: la repite (${c.pushN || 0}/${run.laps} hechas).`,
-        [{ l: 'Repetir', reply: 'No vale, otra vuelta.' }, { l: 'Vale así', f: () => { c.pushN = (c.pushN || 0) + 1; if (run.laps && c.pushN >= run.laps && c.lapKind !== 'in') { c.lapKind = 'in'; c.pitReq = true; } }, reply: 'Nos vale. Seguimos con el programa.' },
-         { l: 'Enfriar antes', f: () => { c.mgr.nextLap = 'cool'; }, reply: 'Vuelta tranquila y lo intentamos otra vez.' }], { ttl: 20, valid: () => c.state !== 'garage' });
+        [{ l: 'Repetir', reply: 'No vale, otra vuelta.' }, { l: 'Vale así', op: ['okLap', c.i], reply: 'Nos vale. Seguimos con el programa.' },
+         { l: 'Enfriar antes', op: ['set', c.i, 'nextLap', 'cool'], reply: 'Vuelta tranquila y lo intentamos otra vez.' }], { ttl: 20, valid: () => c.state !== 'garage' });
       return;
     }
     if (!race) {
-      if (e.type === 'debris' && mine && e.broken && c.state !== 'garage') this.alert(c, 'dmg' + e.part, 'DAÑOS', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto.`, [{ l: 'Box ya', f: () => { c.mgr.boxReq = true; c.pitReq = true; }, reply: 'Vuelve a boxes con cuidado.' }, { l: 'Sigue' }]);
+      if (e.type === 'debris' && mine && e.broken && c.state !== 'garage') this.alert(c, 'dmg' + e.part, 'DAÑOS', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto.`, [{ l: 'Box ya', op: ['boxNow', c.i], reply: 'Vuelve a boxes con cuidado.' }, { l: 'Sigue' }]);
       return;
     }
     // carrera
@@ -391,7 +466,7 @@ export class Manager {
         const { ah, bh } = this.around(m);
         if (!((c === ah && sim.gapTo(m, c) < 3) || (c === bh && sim.gapTo(c, m) < 3))) continue;
         this.alert(m, 'rival' + c.code, c === bh ? 'UNDERCUT' : 'RIVAL EN BOXES', c === bh ? `${c.code} para detrás de ${m.code}. Puede salir delante con goma nueva.` : `${c.code} para delante de ${m.code}. Si paramos ya, intentamos el undercut.`,
-          [this.stopAct(m, null, c === bh ? 'Cubrir: box ya' : 'Undercut: box ya'), { l: 'Overcut: atacar', f: () => { m.mgr.pace = 'push'; }, reply: 'Nos quedamos fuera. Vueltas de clasificación: empuja.' }, { l: 'Ignorar' }], { valid: () => !m.inPit });
+          [this.stopAct(m, null, c === bh ? 'Cubrir: box ya' : 'Undercut: box ya'), { l: 'Overcut: atacar', op: ['set', m.i, 'pace', 'push'], reply: 'Nos quedamos fuera. Vueltas de clasificación: empuja.' }, { l: 'Ignorar' }], { valid: () => !m.inPit });
       }
       return;
     }
@@ -410,16 +485,16 @@ export class Manager {
     const gA = ah ? sim.gapTo(c, ah) : null, gB = bh && !bh.retired ? sim.gapTo(bh, c) : null, pA = c.mgA, pB = c.mgB; c.mgA = gA; c.mgB = gB;
     const sts = c.strategy.stints, st = sts[c.stint], stopSoon = c.stint < sts.length - 1 && st.to - c.lap <= 2;
     const slick = !COMPOUNDS[c.tyre.c].wet;
-    if (M.ers === 'boost' && c.ers <= 0.02) this.alert(c, 'bat', 'BATERÍA', `${c.code} sin batería: el modo ataque ya no da nada.`, [{ l: 'Recargar', f: () => { M.ers = 'charge'; } }, { l: 'Normal', f: () => { M.ers = 'normal'; } }]);
+    if (M.ers === 'boost' && c.ers <= 0.02) this.alert(c, 'bat', 'BATERÍA', `${c.code} sin batería: el modo ataque ya no da nada.`, [{ l: 'Recargar', op: ['set', c.i, 'ers', 'charge'] }, { l: 'Normal', op: ['set', c.i, 'ers', 'normal'] }]);
     if (slick && W.line > 0.3 && left > 1) this.alert(c, 'wetslick', 'SIN AGARRE', 'No hay agarre con lisos.', [this.stopAct(c, W.line > 0.75 ? 'W' : 'I', `Box: ${W.line > 0.75 ? 'lluvia' : 'intermedios'}`), { l: 'Aguanta', reply: 'Aguanta una vuelta más.' }], { voice: [['d', pick(['No hay agarre, esto es una pista de hielo.', '¡No puedo con los lisos!'])]], valid: () => !c.inPit });
     else if (!slick && W.line < 0.14 && W.target < 0.1 && left > 2) this.alert(c, 'dry', 'SE SECA', 'La trazada se seca: las gomas de agua se deshacen.', [this.stopAct(c, left < sim.raceLaps * 0.42 ? 'S' : 'M', `Box: ${left < sim.raceLaps * 0.42 ? 'blandos' : 'medios'}`), this.stopAct(c, 'H', 'Box: duros'), { l: 'Aguanta' }], { voice: [['d', 'La trazada está seca.']], valid: () => !c.inPit });
-    else if (c.tyre.wear > 0.62 && left > 2 && !stopSoon && !M.stopNow) this.alert(c, 'deg' + c.stint, 'GOMAS', `${c.code}: goma al ${Math.round((1 - c.tyre.wear) * 100)} %. Por encima del 72 % de desgaste se cae.`, [this.stopAct(c, null, 'Box ya'), { l: 'Cuidar gomas', f: () => { M.pace = 'save'; }, reply: 'Gestiona: levanta y deja correr.' }, { l: 'Aguanta', reply: 'Aguanta, lo necesitamos.' }], { voice: [['d', pick(['Las gomas se acaban.', 'Pierdo mucho detrás.'])]], valid: () => !c.inPit });
-    else if (gB != null && pB != null && gB < 2 && pB - gB > 0.25 && left > 1 && bh.team !== c.team) this.alert(c, 'def', 'DEFENSA', `${bh.code} a ${nf(gB)} s de ${c.code}: le recupera ${nf(pB - gB)} por vuelta.`, [{ l: 'Atacar', f: () => { M.pace = 'push'; }, reply: 'Todo lo que tengas, defiende la posición.' }, { l: 'Ataque ERS', f: () => { M.ers = 'boost'; }, reply: 'Modo ataque en el motor.' }, { l: 'Pelea agresiva', f: () => { M.fight = 'hard'; }, reply: 'Cierra la puerta, no le dejes nada.' }]);
-    else if (gA != null && pA != null && gA < 2.5 && gA > 0.6 && pA - gA > 0.2 && left > 1 && ah.team !== c.team) this.alert(c, 'att', 'ATAQUE', `${c.code} a ${nf(gA)} s de ${ah.code} y recuperando ${nf(pA - gA)} por vuelta.`, [{ l: 'Ataque ERS', f: () => { M.ers = 'boost'; }, reply: 'Modo ataque: a por él.' }, { l: 'Pelea agresiva', f: () => { M.fight = 'hard'; }, reply: 'Ve a por él en la frenada.' }, { l: 'Ignorar' }]);
+    else if (c.tyre.wear > 0.62 && left > 2 && !stopSoon && !M.stopNow) this.alert(c, 'deg' + c.stint, 'GOMAS', `${c.code}: goma al ${Math.round((1 - c.tyre.wear) * 100)} %. Por encima del 72 % de desgaste se cae.`, [this.stopAct(c, null, 'Box ya'), { l: 'Cuidar gomas', op: ['set', c.i, 'pace', 'save'], reply: 'Gestiona: levanta y deja correr.' }, { l: 'Aguanta', reply: 'Aguanta, lo necesitamos.' }], { voice: [['d', pick(['Las gomas se acaban.', 'Pierdo mucho detrás.'])]], valid: () => !c.inPit });
+    else if (gB != null && pB != null && gB < 2 && pB - gB > 0.25 && left > 1 && bh.team !== c.team) this.alert(c, 'def', 'DEFENSA', `${bh.code} a ${nf(gB)} s de ${c.code}: le recupera ${nf(pB - gB)} por vuelta.`, [{ l: 'Atacar', op: ['set', c.i, 'pace', 'push'], reply: 'Todo lo que tengas, defiende la posición.' }, { l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque en el motor.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Cierra la puerta, no le dejes nada.' }]);
+    else if (gA != null && pA != null && gA < 2.5 && gA > 0.6 && pA - gA > 0.2 && left > 1 && ah.team !== c.team) this.alert(c, 'att', 'ATAQUE', `${c.code} a ${nf(gA)} s de ${ah.code} y recuperando ${nf(pA - gA)} por vuelta.`, [{ l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque: a por él.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Ve a por él en la frenada.' }, { l: 'Ignorar' }]);
     // compañero más rápido detrás
     const mate = this.cars.find((x) => x !== c);
-    if (mate && bh === mate && gB != null && gB < 1.1 && !this.sim.teamOrder?.hold && mate.lastLap && c.lastLap && c.lastLap - mate.lastLap > 0.3 && left > 2)
-      this.alert(c, 'mate', 'EQUIPO', `${mate.code} va ${nf(c.lastLap - mate.lastLap)} s más rápido que ${c.code} y está a ${nf(gB)} s.`, [{ l: `Deja pasar a ${mate.code}`, f: () => this.setOrder('swap') }, { l: 'Mantener posiciones', f: () => this.setOrder('hold') }, { l: 'Que peleen' }]);
+    if (mate && bh === mate && gB != null && gB < 1.1 && !this.ord?.hold && mate.lastLap && c.lastLap && c.lastLap - mate.lastLap > 0.3 && left > 2)
+      this.alert(c, 'mate', 'EQUIPO', `${mate.code} va ${nf(c.lastLap - mate.lastLap)} s más rápido que ${c.code} y está a ${nf(gB)} s.`, [{ l: `Deja pasar a ${mate.code}`, op: ['order', c.i, 'swap'] }, { l: 'Mantener posiciones', op: ['order', c.i, 'hold'] }, { l: 'Que peleen' }]);
   }
 
   // simulador del equipo: lo aprendido ya está en su cerebro; aquí se carga en el coche y se descuenta de lo pendiente
@@ -438,16 +513,21 @@ export class Manager {
     this.jobs.set(car, j); j.run(Infinity); this.endJob(car);
   }
 
+  // tras cada paso de la simulación (no por fotograma: así pasa en el mismo instante en todas las máquinas)
+  tickLogic() {
+    // orden «deja pasar» cumplida: mantener posiciones
+    const O = this.ord, sim = this.sim;
+    if (O?.yield && sim.raceOrder) { const o = sim.raceOrder; if (o.indexOf(O.trail) < o.indexOf(O.yield)) { this.ord = { hold: true, yield: null }; this.say(O.yield, [['e', 'Gracias. Ahora mantened posiciones.']], 2); } }
+  }
+
   update(dt) {
+    if (this.headless) return;
     const now = performance.now(), sim = this.sim;
     // (unos milisegundos por fotograma; si el coche sale del garaje se para y lo que falte queda pendiente)
     for (const [car, j] of this.jobs) { if (car.state !== 'garage') this.endJob(car); else if (j.run(3)) this.endJob(car); }
     // avisos caducados o que ya no tienen sentido
     const n0 = this.alerts.length;
     this.alerts = this.alerts.filter((a) => (this.app.speed === 0 && this.pausedBy === a.id) || (now - a.born < a.ttl && (!a.valid || a.valid())));
-    // orden «deja pasar» cumplida: mantener posiciones
-    const O = sim.teamOrder;
-    if (O?.yield && sim.raceOrder) { const o = sim.raceOrder; if (o.indexOf(O.trail) < o.indexOf(O.yield)) { sim.teamOrder = { hold: true, yield: null }; this.say(O.yield, [['e', 'Gracias. Ahora mantened posiciones.']], 2); } }
     // clasificación: en el garaje y fuera del corte
     const ss = sim.session;
     if (ss && !ss.done && ss.id[0] === 'Q' && ss.phase === 'run' && sim.t > 60) {
@@ -455,7 +535,7 @@ export class Manager {
       if (cut && left > 110 && left < 330) for (const m of this.cars) {
         const p = cls.indexOf(m) + 1;
         if (!m.out && m.state === 'garage' && (p > cut - 2 || !isFinite(m.best))) this.alert(m, 'qcut' + ss.id, 'CORTE', `${m.code} P${p}${p > cut ? ', fuera del corte' : ', al límite del corte'} (P${cut}). Quedan ${Math.ceil(left / 60)} min.`,
-          [{ l: 'Salir: blandos nuevos', f: () => { Object.assign(m.mgr.next, { c: 'S', fresh: true, kind: 'quali', laps: 1, test: false }); this.goOut(m); } }, { l: 'Quedarse' }], { ttl: 25, valid: () => m.state === 'garage' });
+          [{ l: 'Salir: blandos nuevos', op: ['qout', m.i] }, { l: 'Quedarse' }], { ttl: 25, valid: () => m.state === 'garage' });
       }
     }
     this.t -= dt; this.gt -= dt;
@@ -467,7 +547,7 @@ export class Manager {
   // posición: en carrera la de la carrera; en libres y clasificación, la de la tabla de tiempos
   posOf(c) { if (this.race()) return c.pos; const k = this.cls.indexOf(c); return k >= 0 && isFinite(c.best) ? k + 1 : 0; }
   render() {
-    const sim = this.sim; if (!sim.session) return;
+    const sim = this.sim; if (!sim.session || this.headless) return;
     this.cls = this.race() ? null : sim.classification();
     const race = this.race(), tabs = this.cars.map((c, k) => {
       const w = Math.max(0, Math.round((1 - c.tyre.wear) * 100)), st = c.retired ? 'OUT' : c.state === 'garage' ? 'GAR' : c.inPit ? 'BOX' : c.pitReq ? '→BOX' : '';
@@ -476,13 +556,19 @@ export class Manager {
     const html = `<div class="mt"><span>MURO</span><b>${esc(this.cars[0].team.name)}</b></div>
       <button data-a="garage" class="gbig ${this.gOpen ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5V20H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 20v-6h10v6M7 17h10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
         <span><b>${this.gOpen ? 'CERRAR GARAJE' : 'GARAJE'}</b><small>Estrategia · Reglaje · Rendimiento · Radar</small></span><kbd>G</kbd></button>
-      ${this.onGrid() ? '<button data-a="start" class="startBtn">DAR LA SALIDA</button>' : ''}
+      ${this.onGrid() ? this.startBtn() : ''}
       <div class="tabs">${tabs}</div>${this.cardHTML(this.car)}${race ? this.ordersHTML() : ''}`;
     if (!this.mainEl) { this.mainEl = document.createElement('div'); this.mainEl.className = 'mgrMain'; this.alEl = document.createElement('div'); this.alEl.className = 'als'; this.el.append(this.mainEl, this.alEl); }
     if (html !== this.html) { this.html = html; this.mainEl.innerHTML = html; }
     this.renderAlerts();
   }
 
+  // en multijugador la salida espera a que todos los muros estén listos
+  startBtn() {
+    const n = this.app.managers?.length || 1, ready = this.sim.gridReady?.size || 0;
+    if (this.sim.gridReady?.has(this.teamId)) return `<button class="startBtn" disabled>LISTO · ESPERANDO A LOS DEMÁS (${ready}/${n})</button>`;
+    return `<button data-a="start" class="startBtn">${n > 1 ? `LISTO PARA LA SALIDA (${ready}/${n})` : 'DAR LA SALIDA'}</button>`;
+  }
   cardHTML(c) {
     const sim = this.sim, race = this.race(), M = c.mgr, wear = Math.round(c.tyre.wear * 100);
     const { ah, bh } = race ? this.around(c) : {};
@@ -530,7 +616,7 @@ export class Manager {
 
   ordersHTML() {
     const [a, b] = this.cars; if (!b || a.retired || b.retired || a.finished || b.finished) return '';
-    const o = this.sim.raceOrder || [], lead = o.indexOf(a) < o.indexOf(b) ? a : b, trail = lead === a ? b : a, O = this.sim.teamOrder || {};
+    const o = this.sim.raceOrder || [], lead = o.indexOf(a) < o.indexOf(b) ? a : b, trail = lead === a ? b : a, O = this.ord || {};
     const cur = O.yield ? 'swap' : O.hold ? 'hold' : 'free';
     return `<div class="ord"><span>ÓRDENES</span><div class="row seg">${[['free', 'Libres'], ['hold', 'Mantener'], ['swap', `${lead.code} deja pasar`]].map(([v, l]) => `<button data-a="order" data-v="${v}" class="${cur === v ? 'on' : ''}" ${v === 'swap' && cur === 'swap' ? 'disabled' : ''}><b>${l}</b></button>`).join('')}</div>
       ${cur === 'swap' ? `<div class="lc">${lead.code} se aparta en recta cuando ${trail.code} llegue.</div>` : ''}</div>`;
@@ -632,7 +718,7 @@ export class Manager {
     const title = P.live ? (this.onGrid() ? `Plan de carrera de ${c.drv.last} · antes de la salida` : `Plan de carrera de ${c.drv.last} · vuelta ${Math.max(0, c.lap)}/${N}`) : `Borrador del plan de carrera de ${c.drv.last} · ${N} vueltas`;
     const note = P.live ? (this.onGrid() ? 'Arrastra las paradas (V…) para moverlas. La goma de la primera tanda es con la que sale.' : 'Arrastra las paradas para moverlas: el coche para cuando lo diga el plan. Línea continua: desgaste real; discontinua: previsto.')
       : 'Se usará en la carrera. El desgaste previsto sale de las vueltas que haga tu equipo (pestaña Rendimiento).';
-    return `<div class="gtitle"><b>${title}</b><span>${note}</span></div>${svg}${info}${ctl}${this.onGrid() ? '<button data-a="start" class="startBtn">DAR LA SALIDA</button>' : ''}`;
+    return `<div class="gtitle"><b>${title}</b><span>${note}</span></div>${svg}${info}${ctl}${this.onGrid() ? this.startBtn() : ''}`;
   }
 
   setupHTML(c) {
@@ -663,7 +749,7 @@ export class Manager {
         ${isFP(sim.session?.id) ? `<div class="sset"><div class="sh"><b>Piloto</b><span>${M.next.test ? 'Modo consistente: conduce igual todas las vueltas (no prueba nada en pista). Las vueltas con tráfico quedan marcadas y no cuentan. Lo que no aprende en pista lo recupera luego en el simulador del equipo. Con pelea agresiva no cede y se quita a los lentos.' : 'Aprende: prueba trazadas y frenadas en pista (mejora, pero sus vueltas varían).'}</span></div>
           <div class="row seg"><button data-a="ntest" data-v="0" data-i="${c.i}" class="${M.next.test ? '' : 'on'}"><b>Aprende</b><small>mejora cada vuelta</small></button><button data-a="ntest" data-v="1" data-i="${c.i}" class="${M.next.test ? 'on' : ''}"><b>Modo consistente</b><small>vueltas iguales</small></button></div></div>` : ''}
         <button data-a="go" data-i="${c.i}" class="startBtn" ${can ? '' : 'disabled'}>${c.state === 'garage' ? 'SALIR A PISTA' : 'EN PISTA'}</button>`;
-    } else if (this.onGrid()) html += '<button data-a="start" class="startBtn">DAR LA SALIDA</button>';
+    } else if (this.onGrid()) html += this.startBtn();
     return html;
   }
 

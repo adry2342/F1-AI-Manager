@@ -37,7 +37,7 @@ export class UI {
       <div class="grp" id="speeds"><button id="bReplay" title="Repetición de los últimos 12 s del piloto enfocado (R)">Repetir</button>${[0, 1, 2, 4, 8, 16, 32].map((s) => `<button data-speed="${s}">${s === 0 ? 'II' : s + '×'}</button>`).join('')}</div>
  <div class="grp"><button id="bSound" title="Sonido de motor (M)">Sonido</button><button id="bSkip" title="Simular el resto de la sesión a máxima velocidad">Saltar</button><button id="bLearn" class="red" title="Qué han aprendido los pilotos (L)">IA · Aprendizaje</button></div>`;
     c.querySelectorAll('[data-cam]').forEach((b) => (b.onclick = () => this.dir.setType(b.dataset.cam)));
-    c.querySelectorAll('[data-speed]').forEach((b) => (b.onclick = () => this.app.setSpeed(+b.dataset.speed)));
+    c.querySelectorAll('[data-speed]').forEach((b) => (b.onclick = () => this.app.reqSpeed(+b.dataset.speed)));
     $('bAuto').onclick = () => this.dir.setAuto(!(this.dir.auto && !this.dir.lockFocus));
     $('bAutoD').onclick = () => this.dir.setAutoDriver(!this.dir.lockFocus);
     $('qlive').onclick = (e) => { const q = e.target.closest('.ql'); if (q) this.dir.setFocus(this.sim.cars[+q.dataset.i]); };
@@ -45,7 +45,7 @@ export class UI {
     $('bSkip').onclick = () => this.app.skip();
     $('bSound').onclick = () => { this.app.audio.toggle(); this.syncButtons(); };
     $('bLearn').onclick = () => this.showLearning();
-    $('bReplay').onclick = () => { const R = this.app.replay; if (R?.active) R.stop(); else R?.replayLast(); };
+    $('bReplay').onclick = () => { if (this.app.mp) return; const R = this.app.replay; if (R?.active) R.stop(); else R?.replayLast(); };
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
@@ -54,11 +54,11 @@ export class UI {
       else if (k >= '1' && k <= '8') this.dir.setType(CAM_TYPES[+k - 1]);
       else if (k === '[' || k === 'arrowleft') this.cycle(-1);
       else if (k === ']' || k === 'arrowright') this.cycle(1);
-      else if (k === ' ') { e.preventDefault(); this.app.setSpeed(this.app.speed === 0 ? this.app.lastSpeed || 1 : 0); }
-      else if (k === '+' || k === '=') this.app.setSpeed(Math.min(32, Math.max(1, this.app.speed * 2)));
-      else if (k === '-') this.app.setSpeed(Math.max(1, this.app.speed / 2));
+      else if (k === ' ') { e.preventDefault(); this.app.reqSpeed(this.app.speed === 0 ? this.app.lastSpeed || 1 : 0); }
+      else if (k === '+' || k === '=') this.app.reqSpeed(Math.min(32, Math.max(1, this.app.speed * 2)));
+      else if (k === '-') this.app.reqSpeed(Math.max(1, this.app.speed / 2));
       else if (k === 'l') this.showLearning();
-      else if (k === 'r') { const R = this.app.replay; if (R?.active) R.stop(); else R?.replayLast(); }
+      else if (k === 'r' && !this.app.mp) { const R = this.app.replay; if (R?.active) R.stop(); else R?.replayLast(); }
       else if (k === 'm') { this.app.audio.toggle(); this.syncButtons(); }
       else if (k === 'h') $('hud').classList.toggle('hidden');
       else if (k === 'escape') { if (document.querySelector('.modal')) this.closeModal(); else this.pauseMenu(); }
@@ -384,11 +384,13 @@ export class UI {
     if (!show) { el?.remove(); return; }
     if (el) return;
     el = document.createElement('div'); el.id = 'nextBar';
-    el.innerHTML = `<span>SESIÓN TERMINADA</span><button class="btn ghost" data-k="res">Ver resultados</button><button class="btn" data-k="next">${NEXT_LABEL[R[0]]}</button>`;
+    el.innerHTML = `<span>SESIÓN TERMINADA</span><button class="btn ghost" data-k="res">Ver resultados</button><button class="btn" data-k="next">${this.nextLabel(R[0])}</button>`;
     el.onclick = (e) => { const k = e.target.closest('button')?.dataset.k; if (k === 'res') this.results(...R); else if (k === 'next') { el.remove(); this.app.nextSession(); } };
     $('hud').appendChild(el);
   }
 
+  // en multijugador pasar de sesión se vota (y tras la carrera se vuelve a la sala)
+  nextLabel(id) { return this.app.mp ? (id === 'RACE' ? 'Proponer volver a la sala' : 'Proponer: ' + NEXT_LABEL[id].replace(/^Ir/, 'ir')) : NEXT_LABEL[id]; }
   closeModal() {
     document.querySelectorAll('.modal').forEach((m) => m.remove());
     if (this.pausedSpeed != null) { this.app.setSpeed(this.pausedSpeed); this.pausedSpeed = null; }
@@ -401,11 +403,12 @@ export class UI {
         <button class="btn big" id="pGo">Seguir</button>
         <div class="prow"><button id="pReplay">Repetición</button><button id="pLearn">IA · Aprendizaje</button><button id="pSound">${this.app.audio?.on ? 'Silenciar' : 'Activar sonido'}</button></div>
         <p class="keys"><b>A</b> auto · <b>1–8</b> planos · <b>Espacio</b> pausa · <b>+/−</b> velocidad · <b>R</b> repetición · <b>L</b> aprendizaje · <b>H</b> ocultar HUD</p>
-        <button class="danger" id="pRestart">Reiniciar fin de semana</button>
+        <button class="danger" id="pRestart">${this.app.mp ? 'Proponer volver a la sala' : 'Reiniciar fin de semana'}</button>
         <p class="warn">Los pilotos olvidan todo lo aprendido y se vuelve a la pantalla de inicio.</p>
       </div>`);
     m.querySelector('.sheet').classList.add('pauseSheet');
-    this.pausedSpeed = was; this.app.setSpeed(0);
+    // (multijugador: el menú no para la sesión de los demás; la pausa es el botón II)
+    if (!this.app.mp) { this.pausedSpeed = was; this.app.setSpeed(0); } else m.querySelector('#pReplay').style.display = 'none';
     m.querySelector('#pGo').onclick = () => this.closeModal();
     m.querySelector('#pReplay').onclick = () => { this.closeModal(); this.app.replay?.replayLast(); };
     m.querySelector('#pLearn').onclick = () => this.showLearning();
@@ -437,7 +440,7 @@ export class UI {
     const title = race ? `Resultado · Gran Premio` : `Resultado · ${SESSIONS[id].label}`;
     const lead = race ? `Vuelta rápida: <b>${sim.fastest ? sim.fastest.car.code + ' ' + fmtLap(sim.fastest.t) : '—'}</b>. El próximo fin de semana los pilotos empiezan de cero.`
       : cut ? `Quedan eliminados del ${cut + 1}.º al ${id === 'Q1' ? 22 : 16}.º.` : id === 'Q3' ? `Pole para <b>${cls[0].drv.first} ${cls[0].drv.last}</b>.` : 'Los pilotos han probado trazadas y frenadas en cada curva. Mira el panel de IA para ver cuánto han mejorado.';
-    const m = this.modal(`<header><span class="kicker">${race ? 'CARRERA' : SESSIONS[id].short}</span><h2>${title}</h2><button class="btn ghost" id="mLearn">Ver aprendizaje</button><button class="btn" id="mNext">${NEXT_LABEL[id]}</button></header>
+    const m = this.modal(`<header><span class="kicker">${race ? 'CARRERA' : SESSIONS[id].short}</span><h2>${title}</h2><button class="btn ghost" id="mLearn">Ver aprendizaje</button><button class="btn" id="mNext">${this.nextLabel(id)}</button></header>
       <div class="body"><p class="lead">${lead}</p>${race && this.app.manager ? this.app.manager.summaryHTML(cls) : ''}<div class="tw"><table class="cls"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div></div>`);
     m.querySelector('#mNext').onclick = () => { this.closeModal(); this.app.nextSession(); };
     m.querySelector('#mLearn').onclick = () => this.showLearning(true);

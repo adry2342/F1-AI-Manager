@@ -542,6 +542,65 @@ canvas.chart { width: 100%; height: 260px; display: block; }
   #rows li.fin { grid-template-columns: 26px 4px 44px 1fr 54px 22px 13px; }
   #rows li .chq { width: 13px; height: 10px; border-radius: 2px; box-shadow: 0 0 0 1px rgba(255,255,255,.35);
     background: repeating-conic-gradient(#fff 0 25%, #111 0 50%) 0 0 / 5px 5px; }
+
+/* ---------- multijugador: pantalla de inicio y sala */
+.start .mpbox, .start .spOnly { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.start .spOnly { gap: 0; margin-top: 0; }
+.start .mpbox.off, .start .spOnly.off { display: none; }
+.start .mpbox label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); margin-top: 6px; }
+.start .mpbox input { font: 700 15px var(--font); color: #fff; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; padding: 9px 12px; letter-spacing: 0.02em; text-transform: none; }
+.start .mpbox input:focus { outline: none; border-color: #fff; }
+.start .mpbox .btn { border-radius: 999px; padding: 11px; }
+.start .mpErr { color: var(--yellow); min-height: 0; }
+.start .st-l.locked .tcards { pointer-events: none; }
+.start .st-l.locked .tcard:not(.on) { opacity: 0.4; }
+.start .mpAddr { min-height: 0; line-height: 1.6; }
+.start .mpAddr b { color: #fff; user-select: all; }
+.start .mpStatus { min-height: 0; } .start .mpStatus.bad { color: var(--yellow); }
+.start .mpList { display: flex; flex-direction: column; gap: 6px; }
+.start .mpP { display: flex; align-items: center; gap: 10px; background: rgba(255,255,255,0.05); border-radius: 10px; padding: 8px 12px; }
+.start .mpP.me { outline: 1px solid rgba(255,255,255,0.5); }
+.start .mpP i { width: 5px; height: 22px; border-radius: 2px; flex: none; }
+.start .mpP b { font-size: 15px; font-weight: 900; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.start .mpP b small { font-size: 10px; color: var(--muted); letter-spacing: 0.1em; text-transform: uppercase; margin-left: 4px; }
+.start .mpP span { font-size: 12px; color: #d9d9df; font-weight: 700; }
+.start .mpP em { font-style: normal; font-size: 10px; font-weight: 900; letter-spacing: 0.1em; color: var(--muted); min-width: 52px; text-align: right; }
+.start .mpP em.ok { color: var(--green); }
+.start .teams.mpTeams button:disabled { opacity: 0.45; cursor: default; }
+.start .teams.mpTeams button:last-child { grid-column: span 2; justify-content: center; }
+.start .btn:disabled { opacity: 0.5; cursor: default; filter: none; }
+.start .mpBack { margin-top: 10px; border-radius: 999px; width: 100%; }
+/* ---------- multijugador: en la partida */
+#mpBar { position: absolute; top: 16px; left: 352px; width: 200px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+#mpBar .mpPl { background: var(--panel); border-radius: 10px; padding: 6px 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.3); }
+#mpBar .mpH { font-size: 10px; font-weight: 900; letter-spacing: 0.14em; color: var(--muted); padding: 0 2px 4px; }
+#mpBar .mpH b { color: var(--yellow); }
+#mpBar .mpP { display: flex; align-items: center; gap: 7px; padding: 2px; font-size: 12px; }
+#mpBar .mpP i { width: 4px; height: 14px; border-radius: 2px; flex: none; }
+#mpBar .mpP b { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+#mpBar .mpP.me b { font-weight: 900; }
+#mpBar .mpP span { font-size: 10px; color: var(--muted); font-weight: 700; letter-spacing: 0.06em; }
+#mpBar .mpP.off { opacity: 0.45; }
+#mpBar .mpWait, #mpBar .mpFlag { background: rgba(12,12,18,0.95); border-left: 3px solid var(--yellow); border-radius: 8px; padding: 6px 10px; font-size: 12px; font-weight: 700; line-height: 1.35; }
+#mpVote { position: absolute; top: 100px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; background: rgba(12,12,18,0.96); border: 1px solid rgba(255,255,255,0.18); border-radius: 14px; padding: 10px 12px 10px 16px; box-shadow: 0 8px 30px rgba(0,0,0,0.5); z-index: 6; animation: slide 0.3s ease-out; }
+#mpVote .vq { display: flex; flex-direction: column; margin-right: 6px; }
+#mpVote .vq .k { font-size: 10px; font-weight: 900; letter-spacing: 0.14em; color: var(--muted); }
+#mpVote .vq b { font-size: 17px; font-weight: 900; }
+#mpVote .vq .vn { font-size: 11px; color: var(--muted); font-weight: 700; }
+#mpVote .vw { font-size: 12px; color: var(--muted); font-weight: 700; max-width: 150px; }
+#mpVote .btn { padding: 8px 16px; }
+#mpToasts { position: absolute; top: 170px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; z-index: 6; }
+#mpToasts .mpT { background: rgba(12,12,18,0.92); border-radius: 999px; padding: 6px 14px; font-size: 13px; font-weight: 700; animation: slide 0.3s ease-out; }
+@media (max-width: 1100px) { #mpBar { left: auto; right: 280px; } }
+.start .mpNet { display: flex; flex-direction: column; gap: 8px; background: rgba(255,255,255,0.04); border-radius: 12px; padding: 10px 12px; margin-bottom: 10px; }
+.start .mpNet > div { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 13px; }
+.start .mpNet .k { width: 100%; font-size: 10px; font-weight: 900; letter-spacing: 0.12em; color: var(--muted); }
+.start .mpNet b { color: #fff; user-select: all; }
+.start .mpNet .mpLink { color: var(--green); font-size: 14px; word-break: break-all; }
+.start .mpNet .btn { padding: 7px 14px; font-size: 13px; border-radius: 999px; }
+.start .mpNet .bad { color: var(--yellow); width: 100%; }
+.start .mpNet .hint { margin: 0; min-height: 0; }
+#mpBar .mpLinkS { font-size: 10px; color: var(--muted); padding: 4px 2px 0; word-break: break-all; }
 </style>
 <!--/STYLE-->
 </head>
@@ -565,8 +624,8 @@ canvas.chart { width: 100%; height: 260px; display: block; }
 <div id="loading"><div class="box"><div class="t">F1 AI <span>MANAGER</span></div><div class="s" id="loadMsg">Construyendo el circuito…</div></div></div>
 <script type="importmap">
 { "imports": {
-  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  "three": "./vendor/three/build/three.module.js",
+  "three/addons/": "./vendor/three/examples/jsm/"
 } }
 </script>
 <script type="module" src="js/main.js"></script>

@@ -64,10 +64,25 @@ Se elige en la pantalla de inicio:
 - **Porto Cidade**: urbano y rápido junto al puerto, 6,2 km, muros cerca y yates.
 - **Al Noor**: desierto de noche con torres de focos, 6 km, hotel iluminado.
 - **Monte Alto**: montaña al atardecer, 5,9 km con desniveles fuertes.
+- **Val d'Ambre**: bosque en otoño, nublado; la lluvia llega por zonas.
 
 ## Jugar
 
-    ./jugar.sh            # abre http://localhost:8765/
+    ./jugar.sh            # Linux: abre http://localhost:8765/
+    jugar.bat             # Windows (o doble clic en F1-AI-Manager.exe)
+
+Hace falta Node.js, o los ejecutables de `release/` (`node tools/build-exe.mjs <node de Linux>` los genera).
+
+## Multijugador
+
+Cada amigo lleva su equipo en la misma carrera. En la pantalla de inicio, **Multijugador**: uno crea la partida
+(anfitrión) y los demás se unen con la dirección de su red o con el enlace de Internet que crea la sala (túnel gratuito de
+Cloudflare, sin abrir puertos), abriéndolo en Chrome/Edge. Cada 5 s se compara una huella del estado; si alguien se
+separara, el anfitrión le manda una copia completa (`js/snapshot.js`), que también sirve para reconectar a mitad de partida.
+Todas las máquinas simulan lo mismo con la misma semilla; el anfitrión marca el paso y reparte las órdenes de cada
+muro en el paso exacto en que se aplican (`js/net.js`, `server.js`). Pausar es inmediato; seguir, velocidad, saltar
+sesión, pasar de sesión y volver a la sala se votan; la salida de la carrera espera a que todos los muros estén listos.
+Instrucciones para jugadores: `LEEME-MULTIJUGADOR.txt`. Comprobación sin gráficos: `node tools/mpsync.mjs` y `node tools/mpsnap.mjs`.
 
 Opciones por URL: `?q=low` (calidad baja), `?laps=10`, `?track=gp|urban|night|mount`, `?wx=dry|mixed|wet`, `?start=Q1`.
 
