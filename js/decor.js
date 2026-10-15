@@ -414,13 +414,12 @@ export function buildNight(ctx) {
 }
 
 // // ------------------------------------------------------------------ Monte Alto: cordillera alpina, bosque de coníferas, chalets y taludes
-export function buildMountain(ctx) {
-  const { T, world, scene, r, quality } = ctx;
-  const bb = world.bb;
-  const ccx = (bb.x0 + bb.x1) / 2, ccz = (bb.z0 + bb.z1) / 2;
-  const fits = makeFits(T, world, ctx);
-
-  // 0) AJUSTE DEL TERRENO: Asegurar que el terreno quede por debajo de la pista y pianos en todo el circuito
+// Terreno siempre por debajo del asfalto y de los pianos en todo el circuito (rehace la malla de world.js).
+// extra(x, z, n): altura que se suma (taludes del público en el bosque); n = punto de pista más cercano.
+// cone > 0: cada punto de pista solo limita el suelo en un cono de esa pendiente (con desniveles fuertes, el mínimo
+// en 130 m a la redonda dejaba la pista flotando varios metros sobre el terreno en las rampas)
+export function fitTerrain(ctx, extra = null, cone = 0) {
+  const { T, world, scene } = ctx;
   const nearest = world.nearest || T.nearest;
   const tCell = 40, tGrid = new Map();
   for (let i = 0; i < T.N; i += 2) {
@@ -433,7 +432,7 @@ export function buildMountain(ctx) {
     const n = nearest(x, z, 6);
     if (n.i < 0) return world.hills(x, z) + 2;
 
-    let minTy = 1e9;
+    let minTy = 1e9, capY = 1e9, nearY = 1e9, nearD = 1e9;
     let maxB = 0;
     const cx = Math.floor(x / tCell), cz = Math.floor(z / tCell);
 
@@ -445,9 +444,16 @@ export function buildMountain(ctx) {
           const dx = T.x[i] - x, dz = T.z[i] - z;
           if (dx * dx + dz * dz < 130 * 130) {
             const s = i * T.ds;
-            const pL = T.pos(s, HALF_W + 1.8);
-            const pR = T.pos(s, -HALF_W - 1.8);
-            minTy = Math.min(minTy, pL[1], pR[1], T.y[i]);
+            const pL = T.pos(s, T.hw[i] + 1.8);
+            const pR = T.pos(s, -T.hw[i] - 1.8);
+            const ey = Math.min(pL[1], pR[1], T.y[i]);
+            minTy = Math.min(minTy, ey);
+            if (cone) {   // techo: ningún punto de pista (eje o bordes) puede quedar enterrado; el suelo base es la pista más cercana
+              const dist = Math.sqrt(dx * dx + dz * dz);
+              capY = Math.min(capY, T.y[i] + cone * Math.max(0, dist - T.hw[i]),
+                pL[1] + cone * Math.hypot(pL[0] - x, pL[2] - z), pR[1] + cone * Math.hypot(pR[0] - x, pR[2] - z));
+              if (dist < nearD) { nearD = dist; nearY = ey; }
+            }
             const barrierDist = Math.max(world.barrier(s, 1), world.barrier(s, -1));
             maxB = Math.max(maxB, barrierDist);
           }
@@ -463,15 +469,17 @@ export function buildMountain(ctx) {
     const t = Math.min(1, Math.max(0, (d - blendStart) / (blendEnd - blendStart)));
     const e = t * t * (3 - 2 * t);
 
+    const hillY = world.hills(x, z) + 2, add = extra ? extra(x, z, n) : 0;
+    if (cone) {
+      const baseY = (nearY < 1e8 ? nearY : T.y[n.i]) - 0.85;
+      return Math.min(baseY * (1 - e) + hillY * e, capY - 0.85) + add;
+    }
     const baseY = minTy - 0.85;
-    const hillY = world.hills(x, z) + 2;
-
-    return baseY * (1 - e) + hillY * e;
+    return baseY * (1 - e) + hillY * e + add;
   };
 
   world.groundY = robustGroundY;
   ctx.G = robustGroundY;
-  const G = robustGroundY;
 
   // Actualizar la malla de terreno creada en world.js
   let terrainMesh = null;
@@ -489,6 +497,17 @@ export function buildMountain(ctx) {
     posAttr.needsUpdate = true;
     terrainMesh.geometry.computeVertexNormals();
   }
+  return robustGroundY;
+}
+
+export function buildMountain(ctx) {
+  const { T, world, scene, r, quality } = ctx;
+  const bb = world.bb;
+  const ccx = (bb.x0 + bb.x1) / 2, ccz = (bb.z0 + bb.z1) / 2;
+  const fits = makeFits(T, world, ctx);
+
+  // 0) AJUSTE DEL TERRENO: terreno siempre por debajo de la pista y pianos en todo el circuito
+  const G = fitTerrain(ctx);
 
   // 1) CORDILLERA LEJANA: Anillo montañoso alpino con crestas rocosas y cumbres nevadas
   {

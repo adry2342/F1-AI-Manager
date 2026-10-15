@@ -19,7 +19,7 @@ await p.goto(URL0); await p.waitForSelector('#iGo', { timeout: 150000 });
 if (a.track && (await ev(() => document.getElementById('iTrack').value)) !== a.track) {
   await setSel('iTrack', a.track); await p.waitForTimeout(1500); await p.waitForSelector('#iGo', { timeout: 150000 });
 }
-check('portada: 4 tarjetas de circuito', (await p.$$('.tcard')).length === 4);
+check('portada: 5 tarjetas de circuito', (await p.$$('.tcard')).length === 5);
 check('portada sin cargar el circuito', !(await ev(() => !!window.__sim)));
 await click('.seg[data-for="iMode"] button[data-v="mgr"]');
 check('portada: mánager muestra equipos', await ev(() => !document.querySelector('.teams').classList.contains('off')));

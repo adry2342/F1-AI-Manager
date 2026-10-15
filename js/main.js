@@ -34,7 +34,7 @@ async function main(choice) {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'low' ? 0.85 : 1.25));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = CIRCUITS[trackId].night ? 1.05 : CIRCUITS[trackId].sunset ? 0.95 : 0.82;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = CIRCUITS[trackId].night ? 1.05 : CIRCUITS[trackId].sunset ? 0.95 : CIRCUITS[trackId].autumn ? 0.9 : 0.82;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   TX.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
   const scene = new THREE.Scene();
@@ -139,7 +139,7 @@ async function main(choice) {
     V.visSteer += (car.steer - V.visSteer) * (1 - Math.exp(-realDt * 8));
     T.pos(sv + 2, dv, P2); const yA = P2[1]; T.pos(sv - 2, dv, P2);
     const grade = (yA - P2[1]) / 4;
-    const bank = Math.abs(dv) <= HALF_W + 0.5 ? T.lerp(T.bank, sv) : 0;
+    const bank = Math.abs(dv) <= T.hwAt(sv) + 0.5 ? T.lerp(T.bank, sv) : 0;
     root.position.set(P[0], P[1], P[2]);
     root.rotation.set(-Math.atan(grade), trackYaw + V.visYaw + car.slide, -bank, 'YXZ');
     V.body.rotation.set(car.pitch, 0, car.roll * 0.6);

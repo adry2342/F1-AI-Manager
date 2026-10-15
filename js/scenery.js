@@ -5,6 +5,7 @@ import * as TX from './textures.js';
 import { TEAMS } from './teams.js';
 import { HALF_W, between } from './track.js';
 import { buildUrban, buildNight, buildMountain } from './decor.js';
+import { buildForest } from './forest.js';
 
 function rng(seed) { let a = seed >>> 0; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
@@ -32,8 +33,8 @@ export function buildScenery(T, scene, world, quality, sunDir) {
   const free = (x, z, rad) => clearOfTrack(x, z, rad) && occ.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + rad);
   const claim = (x, z, rad) => occ.push({ x, z, r: rad });
   const out = { update: () => {} };
-  const night = !!world.night, urban = !!world.urban, sunset = !!world.sunset;
-  const rural = !night && !urban && !sunset;
+  const night = !!world.night, urban = !!world.urban, sunset = !!world.sunset, autumn = !!world.autumn;
+  const rural = !night && !urban && !sunset && !autumn;
 
   // -------------------------------------------------------------- cielo
   {
@@ -211,6 +212,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
   if (urban) buildUrban(ctx);
   if (night) buildNight(ctx);
   if (sunset) buildMountain(ctx);
+  if (autumn) buildForest(ctx);
   {
     const colors = [0xd32f2f, 0x1976d2, 0xfafafa, 0x212121, 0x9e9e9e, 0x388e3c, 0xfbc02d, 0x5d4037, 0x90a4ae, 0x0d47a1];
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 });
@@ -260,7 +262,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
       beach.scale.copy(lake.scale); beach.rotation.x = -Math.PI / 2; beach.position.set(best[0], y + 0.3, best[1]); scene.add(beach);
       claim(best[0], best[1], rad + 10);
     }
-    for (let t = 0; t < (night || sunset ? 0 : 300); t++) {
+    for (let t = 0; t < (night || sunset || autumn ? 0 : 300); t++) {
       const x = world.bb.x0 + r() * (world.bb.x1 - world.bb.x0), z = world.bb.z0 + r() * (world.bb.z1 - world.bb.z0);
       if (!free(x, z, 40)) continue;
       claim(x, z, 40);

@@ -47,11 +47,24 @@ const MOUNT = [
   [-700, 20, 90], [-420, -20, 200],
 ];
 
+// Bosque en otoño, a la manera de Spa: horquilla al final de la recta, «Eau Rouge», Les Combes, Malmedy, la horquilla
+// de Rivage y el pliegue de Pouhon (vuelve sobre sí mismo), Fagnes, Stavelot, Blanchimont y chicane final.
+// Diseñado como tortuga (tramos y arcos), cerrado con dos tramos libres y escalado ×1,35; la recta de meta, con un curvón
+// a fondo antes de la línea y una chicane a la izquierda pasada la salida de boxes (boxes más juntos: pitK).
+const FOREST = [[600, 0, 35], [627, -27, 35], [672, -27, 35], [699, 0, 35], [1108, 0, 46], [1060, 269, 122], [1094, 358, 94], [1041, 443, 162], [1021, 722, 61], [888, 732, 61], [830, 1010, 94], [370, 1204, 40], [585, 967, 108], [651, 721, 148], [481, 562, 135], [147, 710, 74], [69, 675, 74], [-197, 741, 94], [-379, 967, 81], [-655, 952, 108], [-903, 1033, 61], [-1000, 813, 216], [-1187, 585, 297], [-996, 281, 47], [-911, 306, 47], [-705, -24, 473]];
+
+// altimetría (s en m, altura en m), como Spa: meta en lo alto, bajada a la compresión de T2 y subida brusca hasta T4,
+// Les Combes arriba, bajada por Malmedy y Rivage hasta el fondo del valle (Pouhon, Fagnes, Stavelot) y subida larga
+// por Blanchimont de vuelta a la chicane y a meta
+const FOREST_Y = [[0, 28], [945, 29], [1174, 25], [1350, 5], [1411, 5], [1580, 22], [1755, 30], [1971, 31], [2228, 25], [2565, 15], [2835, 10], [3308, 0], [3645, -5], [3983, -8], [4252, -8], [4590, 0], [4995, 10], [5400, 19], [5670, 24], [6210, 28]];
+
 export const CIRCUITS = {
   gp: { id: 'gp', name: 'Neural Park', place: 'Circuito permanente · de día', laps: 20 },
   urban: { id: 'urban', name: 'Porto Cidade', place: 'Urbano rápido junto al puerto · de día', urban: true, poly: URBAN, elev: 0.35 },
   night: { id: 'night', name: 'Al Noor', place: 'Desierto · carrera de noche', night: true, poly: DESERT, elev: 0.7 },
   mount: { id: 'mount', name: 'Monte Alto', place: 'Montaña · al atardecer', sunset: true, poly: MOUNT, elev: 2.4 },
+  forest: { id: 'forest', name: "Val d'Ambre", place: 'Bosque en otoño · nublado', autumn: true, poly: FOREST, yProf: FOREST_Y, pitK: 0.72, cornerKerbs: true,
+    narrow: [[1250, 1640, 6.2], [3480, 4040, 6.5]] },   // estrecha en Eau Rouge-Les Combes y en Stavelot
 };
 
 // Polígono con esquinas redondeadas -> puntos de control densos (arcos cada ~8 m, rectas cada ~60 m)
@@ -171,16 +184,39 @@ export function buildTrack(id = 'gp') {
     const u = (i / N) * Math.PI * 2;
     y[i] = (meta.elev ?? 1) * (3.2 * Math.sin(u + 2.4) + 2.2 * Math.sin(2 * u + 0.3) + 1.1 * Math.sin(5 * u + 1.9)) + 6;
   }
+  if (meta.yProf) {   // perfil a mano: puntos (s, y) unidos con coseno y suavizados (s del trazado ya construido)
+    const P = meta.yProf, L = N * ds;
+    for (let i = 0; i < N; i++) {
+      const s = i * ds; let j = P.length - 1; while (j > 0 && P[j][0] > s) j--;
+      const a = P[j], b = j + 1 < P.length ? P[j + 1] : [L, P[0][1]];
+      const f = (s - a[0]) / Math.max(1, b[0] - a[0]);
+      y[i] = a[1] + (b[1] - a[1]) * (1 - Math.cos(Math.PI * f)) / 2;
+    }
+    y.set(smoothArr(y, 25, 2));
+  }
   // banking suave en curvas rápidas (radianes, positivo = inclina hacia el interior)
   const bank = new Float64Array(N);
   const bk = meta.urban ? 0.3 : 1; // en la ciudad las calles apenas tienen peralte
   for (let i = 0; i < N; i++) bank[i] = bk * Math.max(-0.05, Math.min(0.05, k[i] * 2.2));
   const bankS = smoothArr(bank, 20, 2);
 
+  // semiancho de la pista en cada punto: HALF_W salvo en los tramos estrechos del circuito (meta.narrow: [s0, s1, semiancho],
+  // con 60 m de transición a cada lado)
+  const hw = new Float64Array(N).fill(HALF_W);
+  for (const [a, b, w] of meta.narrow || []) {
+    const L = N * ds, fwd = (p, q) => ((q - p) % L + L) % L, len = fwd(a, b);
+    for (let i = 0; i < N; i++) {
+      const s = i * ds;
+      let f = fwd(a, s) <= len ? 1 : 1 - Math.min(1, Math.min(fwd(b, s), fwd(s, a)) / 60);
+      f = f * f * (3 - 2 * f);
+      hw[i] = Math.min(hw[i], HALF_W + (w - HALF_W) * f);
+    }
+  }
   const T = {
-    N, L: N * ds, ds, x, z, y, tx, tz, lx, lz, k, bank: bankS,
+    N, L: N * ds, ds, x, z, y, tx, tz, lx, lz, k, bank: bankS, hw,
     halfW: HALF_W, id: meta.id, meta,
   };
+  T.hwAt = (s) => hw[T.idx(s)];
   T.wrap = (s) => ((s % T.L) + T.L) % T.L;
   T.idx = (s) => { const i = Math.floor(T.wrap(s) / ds); return i >= N ? 0 : i; };
   T.lerp = (arr, s) => {
@@ -194,7 +230,7 @@ export function buildTrack(id = 'gp') {
     const Lx = lx[i] * (1 - f) + lx[i2] * f, Lz = lz[i] * (1 - f) + lz[i2] * f;
     const b = bankS[i] * (1 - f) + bankS[i2] * f;
     out[0] = cx + Lx * d; out[2] = cz + Lz * d;
-    out[1] = y[i] * (1 - f) + y[i2] * f + (Math.abs(d) <= HALF_W + 0.5 ? -b * d : -b * Math.sign(d) * HALF_W);
+    out[1] = y[i] * (1 - f) + y[i2] * f + (Math.abs(d) <= hw[i] + 0.5 ? -b * d : -b * Math.sign(d) * hw[i]);
     return out;
   };
   // diferencia de s hacia delante (b delante de a)
@@ -284,14 +320,15 @@ function storedIdeal(T) {
     const u = (i * T.ds) / step, j = Math.floor(u), t = u - j;
     const p0 = P[(j - 1 + n) % n], p1 = P[j % n], p2 = P[(j + 1) % n], p3 = P[(j + 2) % n], t2 = t * t, t3 = t2 * t;
     out[i] = 0.5 * (2 * p1 + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+    const lim = T.hw[i] - CAR_HALF - 0.3; out[i] = Math.max(-lim, Math.min(lim, out[i]));   // (dentro también donde se estrecha)
   }
   return out;
 }
 
 // Trazada de mínima curvatura (si no hay una optimizada guardada) (conocimiento "de libro" que los pilotos refinan practicando)
-export function idealLine(T, lim = HALF_W - CAR_HALF - 0.3) {
+export function idealLine(T, margin = CAR_HALF + 0.3) {
   const { N, x, z, lx, lz } = T;
-  // lim: margen al borde
+  // margin: margen al borde (el borde cambia donde la pista se estrecha)
   const d = new Float64Array(N);
   for (const h of [40, 24, 14, 8, 5]) {
     for (let it = 0; it < 220; it++) {
@@ -302,6 +339,7 @@ export function idealLine(T, lim = HALF_W - CAR_HALF - 0.3) {
         const mx = (pax + pbx) / 2, mz = (paz + pbz) / 2;
         const px = x[i] + lx[i] * d[i], pz = z[i] + lz[i] * d[i];
         let nd = d[i] + ((mx - px) * lx[i] + (mz - pz) * lz[i]) * 0.5;
+        const lim = T.hw[i] - margin;
         d[i] = Math.max(-lim, Math.min(lim, nd));
       }
     }
@@ -311,16 +349,16 @@ export function idealLine(T, lim = HALF_W - CAR_HALF - 0.3) {
 
 function buildPit(T) {
   // la recta principal es s ∈ [L-~350, ~850]; el pit lane va a la derecha
-  const L = T.L;
+  const L = T.L, K = T.meta.pitK || 1;          // K < 1: boxes más juntos (deja sitio a una chicane en la recta)
   const pit = {
-    entryA: T.wrap(-560), entryB: T.wrap(-380), // rampa de entrada (d: línea -> PIT_D)
-    limitA: T.wrap(-330), limitB: 420,          // zona de 80 km/h
-    exitA: 470, exitB: 700,                     // rampa de salida
+    entryA: T.wrap(-560 * K), entryB: T.wrap(-380 * K), // rampa de entrada (d: línea -> PIT_D)
+    limitA: T.wrap(-330 * K), limitB: 420 * K,          // zona de 80 km/h
+    exitA: 470 * K, exitB: 700 * K,                     // rampa de salida
     d: PIT_D, wallD: PIT_WALL_D, speed: 80 / 3.6,
     boxes: [],
   };
   // 11 boxes, uno por equipo, del primero (cerca de la entrada) al último
-  for (let i = 0; i < 11; i++) pit.boxes.push({ s: T.wrap(-250 + i * 55), d: PIT_D - 3.5 });
+  for (let i = 0; i < 11; i++) pit.boxes.push({ s: T.wrap((-250 + i * 55) * K), d: PIT_D - 3.5 });
   pit.fastD = PIT_D + 2.5;
   pit.edgeD = -HALF_W + 1.9;                    // centro del carril cuando aún va pegado al borde de la pista
   // desde aquí el coche que entra se pega a la derecha: todo lo que dé la recta (120-250 m), para que no cruce la pista de golpe
@@ -349,7 +387,7 @@ function buildDRS(T) {
     straights.push({ a, b, len: T.ahead(a, b) });
   }
   straights.sort((p, q) => q.len - p.len);
-  T.drs = straights.slice(0, 2).map((st) => ({
+  T.drs = straights.slice(0, 2).filter((st, n) => n === 0 || st.len > 250).map((st) => ({
     detect: T.wrap(st.a - 90), a: T.wrap(st.a + 60), b: T.wrap(st.b - 60),
   }));
   T.inDRS = new Uint8Array(T.N);
@@ -386,8 +424,9 @@ function buildRunoff(T) {
       // desierto: escapatorias de asfalto pintado y arena (tipo 0) más allá
       tOut = big > 8 ? 2 : 0;
     }
-    BL[i] = HALF_W + (outside === 1 ? wOut : wIn);
-    BR[i] = HALF_W + (outside === -1 ? wOut : wIn);
+    const W = T.hwAt(s);
+    BL[i] = W + (outside === 1 ? wOut : wIn);
+    BR[i] = W + (outside === -1 ? wOut : wIn);
     typeL[i] = outside === 1 ? tOut : tIn; typeR[i] = outside === -1 ? tOut : tIn;
   }
   // no invadir otras partes del circuito: limitar por distancia a muestras lejanas
@@ -412,10 +451,11 @@ function buildRunoff(T) {
     const s = i * STEP;
     for (const side of [1, -1]) {
       const arr = side === 1 ? BL : BR;
-      for (let d = Math.min(HALF_W + 4, arr[i]); d < arr[i] + 8; d += 3) {
+      const W = T.hwAt(s);
+      for (let d = Math.min(W + 4, arr[i]); d < arr[i] + 8; d += 3) {
         T.pos(s, side * d, P);
         const n = nearest(P[0], P[2], 2);
-        if (n.i >= 0 && Math.abs(T.rel(s, n.i * T.ds)) > 120 && n.d < HALF_W + 10 + (d - HALF_W) * 0.3) { arr[i] = Math.max(Math.min(arr[i], HALF_W + 4), (d - HALF_W) * 0.5 + HALF_W); break; }
+        if (n.i >= 0 && Math.abs(T.rel(s, n.i * T.ds)) > 120 && n.d < T.hw[n.i] + 10 + (d - W) * 0.3) { arr[i] = Math.max(Math.min(arr[i], W + 4), (d - W) * 0.5 + W); break; }
       }
     }
   }

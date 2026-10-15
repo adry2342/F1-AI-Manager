@@ -12,7 +12,7 @@ const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a)
 // (desde 3.ª, a partir de ~130 km/h, un 7 % menos: empujaba demasiado en las marchas largas)
 export const gearPower = (v) => (1 - 0.08 * sstep(52, 57, v) * (1 - sstep(82, 87, v))) * (1 - 0.07 * sstep(34, 38, v));
 const TRAC = 0.58;          // fracción del agarre usable acelerando
-const LIMN = HALF_W - CAR_HALF - 0.25; // límite lateral de los nodos de trazada
+const LIMN = HALF_W - CAR_HALF - 0.25; // límite lateral de los nodos de trazada (donde la pista es estrecha, menos: clampN)
 const CP_STEP = 50;         // checkpoints de cronometraje
 const LEN = 5.6;            // largo del coche
 const SEP = 2.15;           // separación lateral mínima entre ejes de coches
@@ -339,7 +339,9 @@ export class Sim {
     const r = this.rng, mode = this.weatherMode || 'random';
     const dur = id === 'RACE' ? this.raceLaps * 95 : SESSIONS[id].dur;
     let kind = mode;
-    if (mode === 'random') { const x = r(); kind = x < 0.82 ? 'dry' : x < 0.95 ? 'mixed' : 'wet'; }
+    if (mode === 'random') { const x = r(), dry = this.T.meta?.autumn ? 0.6 : 0.82; kind = x < dry ? 'dry' : x < dry + (1 - dry) * 0.72 ? 'mixed' : 'wet'; }
+    // en el bosque el chubasco no cubre todo el circuito: un núcleo que se desplaza despacio a lo largo de la vuelta
+    this.cell = this.T.meta?.autumn ? { s0: r() * this.T.L, v: (r() < 0.5 ? -1 : 1) * this.T.L / (1500 + r() * 1500) } : null;
     const ev = [];
     if (kind === 'wet') {
       ev.push({ t: 0, rain: 0.45 + r() * 0.5 });
@@ -372,7 +374,17 @@ export class Sim {
   wetAt(car) {
     const W = this.wx; if (!W || W.wet < 1e-3) return 0;
     const off = Math.min(1, Math.max(0, (Math.abs(car.dev || 0) - 1.8) / 3));
-    return Math.min(1, (W.line + (W.wet - W.line) * off) * this.puddle(car.s));
+    return Math.min(1, (W.line + (W.wet - W.line) * off) * this.puddle(car.s) * this.rainCell(car.s));
+  }
+  // nodo j de n de una trazada, dentro de la pista (su anchura en ese punto)
+  clampN(j, n, v) { const T = this.T, lim = Math.min(LIMN, T.hwAt(j * T.L / n) - CAR_HALF - 0.25); return Math.max(-lim, Math.min(lim, v)); }
+  // cuánta agua hay en s respecto a la media de la vuelta (1 en todos los circuitos menos el bosque): entre 0,5 y 1,8,
+  // con media ~1, así que el piloto (que estima por la media) llega al núcleo del chubasco con más agarre del que hay
+  rainCell(s) {
+    const C = this.cell; if (!C) return 1;
+    const L = this.T.L, c = ((C.s0 + C.v * this.t) % L + L) % L;
+    let d = Math.abs(s - c); d = Math.min(d, L - d);
+    const w = 0.22 * L; return 0.5 + 1.3 * Math.exp(-(d / w) * (d / w));
   }
   // charcos y ríos: en unas pocas curvas (distintas cada sesión) se acumula más agua de la que el piloto espera
   // por lo que ve en el resto de la pista; ahí es donde se sale o hace un trompo
@@ -695,7 +707,7 @@ export class Sim {
     if (T.zoneOf[i] >= 0 && toCorner > 400) car.defMoved = false;
 
     // --- elección de carril
-    const lim = HALF_W - CAR_HALF - 0.15;
+    const hwC = Math.min(T.hwAt(car.s), T.hwAt(car.s + 25)), lim = hwC - CAR_HALF - 0.15;
     const yMove = T.zoneOf[i] < 0 && toCorner > brakeDist + 40;   // ceder apartándose: solo en recta
     const wl = car.alt ? 0.1 : car.mode === 'attack' ? 0.03 : car.mode === 'defend' ? 0.05 : car.mode === 'yield' && yMove ? 0.015 : 0.12;
     // primera vuelta: el pelotón se ordena en fila en vez de ir tres en paralelo por toda la pista
@@ -713,9 +725,9 @@ export class Sim {
     const startK = race && this.raceStart != null && car.gridD != null ? Math.max(0, 1 - (this.t - this.raceStart) / 4.5) : 0;
     for (let dc = -lim; dc <= lim + 1e-6; dc += 0.5) {
       let c = wlx * (dc - lineP) * (dc - lineP) + 0.03 * (dc - curAbs) * (dc - curAbs);
-      if (Math.abs(dc) > HALF_W - 1.6) c += 1.2 * (Math.abs(dc) - (HALF_W - 1.6));
+      if (Math.abs(dc) > hwC - 1.6) c += 1.2 * (Math.abs(dc) - (hwC - 1.6));
       if (car.mode === 'attack' && car.target && !car.alt) {
-        const k = (1 + car.drv.craft) / HALF_W;
+        const k = (1 + car.drv.craft) / hwC;
         const tgtSide = Math.sign(car.target.d - car.d) || 1;
         if ((plan === 'inside' || !plan) && toCorner < 320 && toCorner > 0) c -= 0.35 * inside * dc * k;
         else if (plan === 'outside' && (toCorner < 320 || car.atkPhase !== 'setup')) c += 0.35 * inside * dc * k;
@@ -804,7 +816,7 @@ export class Sim {
       car.vs = car.v; car.dPrev = car.d; car.slide = car.slide || 0;
       if (car.inPit) { car.parked = true; return; }
       const side = car.parkSide || (car.parkSide = car.d >= 0 ? 1 : -1);
-      const goal = side * Math.min(HALF_W + 9, T.barrier(car.s, side) - 1.2);
+      const goal = side * Math.min(T.hwAt(car.s) + 9, T.barrier(car.s, side) - 1.2);
       car.d += Math.max(-3 * DT, Math.min(3 * DT, goal - car.d));
       car.dev = car.d - car.line[T.idx(car.s)];
       if (Math.abs(car.d - goal) < 0.1 && car.v < 1) car.parked = true;
@@ -901,16 +913,16 @@ export class Sim {
     if (exec !== 1) target *= Math.sqrt(exec);
     const offLine = z >= 0 && Math.abs(dev) > 2.2 && !car.inPit ? 1 - Math.min(0.045, (Math.abs(dev) - 2.2) * 0.012) : 1; // gomas sueltas fuera de la trazada
     // superficie: pista, arcén asfaltado, hierba, grava, asfalto pintado
-    const ad = Math.abs(car.d);
+    const ad = Math.abs(car.d), hwS = T.hwAt(car.s);
     let surfMu = 1, surfDrag = 0;
-    if (!car.inPit && ad > HALF_W + 1.6) {
-      const st = ad > HALF_W + 3 ? T.surface(car.s, car.d >= 0 ? 1 : -1) : 2;
+    if (!car.inPit && ad > hwS + 1.6) {
+      const st = ad > hwS + 3 ? T.surface(car.s, car.d >= 0 ? 1 : -1) : 2;
       surfMu = (st === 0 ? 0.55 : st === 1 ? 0.5 : st === 2 ? 0.88 : 0.92) * (1 - 0.3 * this.wx.wet);
       surfDrag = (st === 1 ? 9 : st === 0 ? 2.5 : 0) * Math.min(1, car.v / 30);   // la grava frena mucho a alta velocidad; despacio se sale
       if (st === 1 && car.v > 6) { car.gravelT = this.t; car.gravelSide = car.d >= 0 ? 1 : -1; }
     } else if (!car.inPit) {
       // vuelve a la pista con las ruedas llenas de grava: la deja esparcida unos metros (resbala hasta que se limpia)
-      if (car.gravelT != null && this.t - car.gravelT < 2 && ad < HALF_W + 0.5) { this.dropGravel(car); car.gravelT = null; }
+      if (car.gravelT != null && this.t - car.gravelT < 2 && ad < hwS + 0.5) { this.dropGravel(car); car.gravelT = null; }
       surfMu *= this.gravelGrip(car);
     }
     const talent = 1 + 0.018 * (car.drv.pace - 0.88);
@@ -942,14 +954,14 @@ export class Sim {
       kFF = klI / Math.max(0.3, 1 - klI * e);
       // su punto (trazada + desvío), pero nunca fuera de la pista: el desvío se elige respecto a la trazada unos metros
       // por delante y, si la trazada cruza la pista, sumado a la de aquí acababa fuera (salidas sin error de verdad)
-      const lim = HALF_W - CAR_HALF - 0.15;
+      const lim = Math.min(T.hwAt(car.s), T.hwAt(car.s + 10)) - CAR_HALF - 0.15;
       const err = Math.max(-lim, Math.min(lim, Ls + car.devTarget)) - car.d;
       car.laneErr = err;
       // corrección hacia su punto: nunca más de un tercio del agarre (cambiar de carril no es tirar el coche)
       const fbMax = 0.35 * capP / (v * v);
       // a poca velocidad no apunta más de unos grados fuera de su trazada (en la salida, no cruzarse de lado a lado)
       // (fuera de la pista no: un coche lento en la escapatoria tardaría una eternidad en volver)
-      const hMax = Math.abs(car.d) > HALF_W + 0.5 ? Infinity : (0.05 + 0.007 * v) * Pp;
+      const hMax = Math.abs(car.d) > T.hwAt(car.s) + 0.5 ? Infinity : (0.05 + 0.007 * v) * Pp;
       const de = Math.max(-hMax, Math.min(hMax, err));
       // velocidad lateral hacia su carril: la de la persecución, pero nunca más de la que puede frenar con esa corrección
       // (antes, al cambiar mucho de carril, se echaba de lado a tope y se pasaba unos metros: salía de la pista sin error)
@@ -1126,17 +1138,17 @@ export class Sim {
     car.dev = d - T.lerp(car.line, car.s);
     car.devV = (d - prevD) / DT;
     car.yaw = car.psi;
-    const ad = Math.abs(d);
-    car.off = ad > HALF_W + 0.3 ? car.off + DT : Math.max(0, car.off - DT * 2);
-    if (ad > HALF_W + 1.05 && car.lapClean && !car.mistake) {
+    const ad = Math.abs(d), hwS = T.hwAt(car.s);
+    car.off = ad > hwS + 0.3 ? car.off + DT : Math.max(0, car.off - DT * 2);
+    if (ad > hwS + 1.05 && car.lapClean && !car.mistake) {
       car.lapClean = false;
       if (car.lapKind === 'push') this.emit({ type: 'limits', car, corner: this.cornerAt(car.s) });
-    } else if (ad > HALF_W + 1.05) car.lapClean = false;
+    } else if (ad > hwS + 1.05) car.lapClean = false;
     // se sale de la pista del todo (las cuatro ruedas en la escapatoria)
-    if (!car.excursion && ad > HALF_W + 2.2 && !car.retired) {
+    if (!car.excursion && ad > hwS + 2.2 && !car.retired) {
       car.excursion = true; this.flagMistake(car, 'off');
     }
-    else if (car.excursion && ad < HALF_W) car.excursion = false;
+    else if (car.excursion && ad < hwS) car.excursion = false;
   }
 
   // Contra la barrera fuera de un trompo: roce (rebota y pierde velocidad), golpe (trompo y daños) o accidente
@@ -1186,7 +1198,7 @@ export class Sim {
     const T = this.T, m = car.mistake; m.t += DT;
     car.dPrev = car.d;
     const side = Math.sign(car.d) || m.out;
-    const offT = Math.abs(car.d) > HALF_W + 0.3;
+    const offT = Math.abs(car.d) > T.hwAt(car.s) + 0.3;
     const surf = offT ? T.surface(car.s, side) : -1;           // -1 pista, 0 hierba, 1 grava, 2 asfalto pintado
     if (surf === 1 && car.v > 4) { car.gravelT = this.t; car.gravelSide = side; }
     const v = car.v;
@@ -1247,7 +1259,7 @@ export class Sim {
 
   // grava en la pista: parche que se va limpiando con el tiempo y con cada coche que pasa por encima
   dropGravel(car) {
-    const g = { s: car.s, d: car.gravelSide * (HALF_W - 2), len: 25 + car.v * 0.8, w: 3.5, amt: 1, t: this.t };
+    const g = { s: car.s, d: car.gravelSide * (this.T.hwAt(car.s) - 2), len: 25 + car.v * 0.8, w: 3.5, amt: 1, t: this.t };
     this.gravel.push(g); if (this.gravel.length > 30) this.gravel.shift();
     this.emit({ type: 'gravel', car, ...g });
   }
@@ -1814,7 +1826,7 @@ export class Sim {
       if (this.rng() > frac) continue;
       const idx = j % n, o = x[idx];
       for (const sg of this.rng() < 0.5 ? [1, -1] : [-1, 1]) {
-        let v = Math.max(-LIMN, Math.min(LIMN, o + sg * h));
+        let v = this.clampN(j, n, o + sg * h);
         if (cons) v = cons(j, v);
         if (Math.abs(v - o) < 1e-3) continue;
         x[idx] = v; this.modelNode(x, idx, true);
@@ -1838,7 +1850,7 @@ export class Sim {
       const u = T.rel(c.sIn, T.wrap(j * step));
       if (u < u0 || u > u1) return v;
       const r = car.kb.nodes[j % n];
-      return Math.max(-LIMN, Math.min(LIMN, side * (v - r) < m ? r + side * m : v));
+      return this.clampN(j, n, side * (v - r) < m ? r + side * m : v);
     };
   }
 
@@ -1858,7 +1870,7 @@ export class Sim {
 
   altNodes(car, z, type, e) {
     const [lo, hi] = this.zRange[z], n = car.kb.nodes.length, cons = this.altCons(car, z, type), out = [];
-    for (let j = lo; j <= hi; j++) out.push(cons(j, Math.max(-LIMN, Math.min(LIMN, car.kb.nodes[j % n] + e.dv[j - lo]))));
+    for (let j = lo; j <= hi; j++) out.push(cons(j, this.clampN(j, n, car.kb.nodes[j % n] + e.dv[j - lo])));
     return out;
   }
 
@@ -1936,7 +1948,7 @@ export class Sim {
       const y = Float64Array.from(bestX || x);
       const center = lo + Math.floor(this.rng() * (hi - lo + 1)), width = 1.2 + this.rng() * 2.5;
       const amp = gauss(this.rng) * (1.4 * Math.exp(-exp / 50) + 0.3) * scale;
-      for (let j = lo; j <= hi; j++) y[j % n] = Math.max(-LIMN, Math.min(LIMN, y[j % n] + amp * Math.exp(-((j - center) ** 2) / (2 * width * width))));
+      for (let j = lo; j <= hi; j++) y[j % n] = this.clampN(j, n, y[j % n] + amp * Math.exp(-((j - center) ** 2) / (2 * width * width)));
       const t = this.modelTime(car, y, z);
       if (t < bestT) { bestT = t; bestX = y; cand.imit = null; }
     }

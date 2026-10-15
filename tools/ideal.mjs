@@ -57,7 +57,7 @@ for (const id of (process.argv[2] || 'gp,urban,night').split(',')) {
         let imp = false;
         for (let j = 0; j < n; j++) {
           for (const dv of [h, -h]) {
-            for (let q = -R; q <= R; q++) { const m = (j + q + n) % n; bak[m] = nodes[m]; nodes[m] = Math.max(-LIM, Math.min(LIM, nodes[m] + dv * Math.exp(-(q * q) / (2 * w * w)))); }
+            for (let q = -R; q <= R; q++) { const m = (j + q + n) % n; bak[m] = nodes[m]; const lm = Math.min(LIM, T.hwAt(m * step) - CAR_HALF - 1.1); nodes[m] = Math.max(-lm, Math.min(lm, nodes[m] + dv * Math.exp(-(q * q) / (2 * w * w)))); }
             const t = time(nodes);
             if (t < best - 1e-5) { best = t; imp = true; break; }
             for (let q = -R; q <= R; q++) { const m = (j + q + n) % n; nodes[m] = bak[m]; }

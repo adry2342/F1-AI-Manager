@@ -51,8 +51,8 @@ function hash(x) { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.f
 export function buildWorld(T, scene, renderer, quality = 'high') {
   const world = { update: () => {}, screens: [], lights: [], marshal: [], crews: [], overheads: [] };
   world.scene = scene;
-  const meta = T.meta || {}, night = !!meta.night, urban = !!meta.urban, sunset = !!meta.sunset;
-  world.night = night; world.urban = urban; world.sunset = sunset;
+  const meta = T.meta || {}, night = !!meta.night, urban = !!meta.urban, sunset = !!meta.sunset, autumn = !!meta.autumn;
+  world.night = night; world.urban = urban; world.sunset = sunset; world.autumn = autumn;
   const STEP = 2;
   const M = Math.floor(T.L / STEP);
   const P = [0, 0, 0];
@@ -240,7 +240,8 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     const r = new Ribbon(), cols = 6;
     for (let i = 0; i <= M; i++) {
       const s = i * STEP, row = [];
-      for (let c = 0; c <= cols; c++) { const d = -HW + (2 * HW * c) / cols; const p = pos(s, d); row.push([...p, (d + HW) / 4.5, s / 4.5]); }
+      const W = T.hwAt(s);   // (la pista se estrecha en algunos tramos: T.hw)
+      for (let c = 0; c <= cols; c++) { const d = -W + (2 * W * c) / cols; const p = pos(s, d); row.push([...p, (d + W) / 4.5, s / 4.5]); }
       r.strip([row]);
       r.idx.length; // se cierran abajo
     }
@@ -287,7 +288,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   const dashIn = [T.wrap(pit.entryA - 90), sepIn], dashOut = [sepOut, T.wrap(pit.exitB + 90)];
   const pitRamp = (s) => between(T, s, T.wrap(pit.entryA - 20), T.wrap(pit.exitB + 30));
   // líneas blancas de borde (la derecha, discontinua donde se entra y se sale de boxes)
-  along(0, T.L, HW - 0.45, HW - 0.2, 0.01, mat.white);
+  along(0, T.L, (s) => T.hwAt(s) - 0.45, (s) => T.hwAt(s) - 0.2, 0.01, mat.white);
   const paint = new Ribbon();
   const stripe = (s0, len, dFn, w, dash = 0, gap = 0) => {
     const pieces = dash ? [] : [[s0, len]];
@@ -299,7 +300,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     }
   };
   {
-    const edge = () => -HW + 0.325;
+    const edge = (s) => -T.hwAt(s) + 0.325;
     stripe(dashIn[1], T.ahead(dashIn[1], dashOut[0]), edge, 0.25);
     stripe(dashOut[1], T.ahead(dashOut[1], dashIn[0]), edge, 0.25);
     stripe(dashIn[0], T.ahead(dashIn[0], dashIn[1]), edge, 0.25, 3, 3);
@@ -321,12 +322,20 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       let run = null;
       const flush = (a, b) => {
         if (b - a < 10) return;
-        const mm = along(a, b - a, side > 0 ? HW - 0.3 : -HW - 1.5, side > 0 ? HW + 1.5 : -HW + 0.3,
+        const mm = along(a, b - a, (s) => (side > 0 ? T.hwAt(s) - 0.3 : -T.hwAt(s) - 1.5), (s) => (side > 0 ? T.hwAt(s) + 1.5 : -T.hwAt(s) + 0.3),
           (s, e) => (side > 0 ? (e ? 0.02 : 0.07) : (e ? 0.07 : 0.02)), (a * 7) % 3 < 1 ? mat.kerbY : mat.kerb, 1.8, 3.2, true, 1);
         mm.castShadow = false;
       };
+      // con cornerKerbs, además, en cada curva detectada: por dentro de la entrada a la salida y por fuera del vértice a la
+      // salida (la curvatura suavizada no llega al umbral en las chicanes, que se compensan, ni en las curvas rápidas o cortas)
+      const byCorner = new Uint8Array(M);
+      if (T.meta.cornerKerbs) for (const c of T.corners) {
+        const inside = Math.sign(c.dir) || 1;
+        const [a, b] = side === inside ? [c.sIn + 4, c.sOut] : [c.apex - 8, c.sOut + 14];
+        for (let s = a; s <= b; s += STEP) byCorner[Math.floor(T.wrap(s) / STEP) % M] = 1;
+      }
       for (let i = 0; i < M; i++) {
-        const need = Math.abs(kS[i]) > 1 / 160 && !(side < 0 && pitRamp(i * STEP));
+        const need = (Math.abs(kS[i]) > 1 / 160 || byCorner[i]) && !(side < 0 && pitRamp(i * STEP));
         if (need && run == null) run = i * STEP;
         if (!need && run != null) { flush(run - 12, i * STEP + 12); run = null; }
       }
@@ -341,7 +350,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       if (on && run == null) run = i;
       if (!on && run != null) {
         const s0 = run * STEP, len = (i - run) * STEP;
-        const inner = (s) => side * (HW + 1.5), outer = (s) => side * (B[Math.floor(T.wrap(s) / STEP) % M] - 0.4);
+        const inner = (s) => side * (T.hwAt(s) + 1.5), outer = (s) => side * (B[Math.floor(T.wrap(s) / STEP) % M] - 0.4);
         const material = type === 0 ? mat.grass : type === 1 ? mat.gravel : type === 2 ? mat.paint : mat.verge;
         const [a, b] = side > 0 ? [inner, outer] : [outer, inner];
         along(s0, len + STEP, a, b, -0.02, material, type === 2 ? 30 : 6, type === 2 ? 60 : 6);
@@ -351,9 +360,9 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   };
   for (const side of [1, -1]) for (const t of [0, 1, 2, 3]) byType(side, t);
   // arcén asfaltado junto a la pista (encima de la escapatoria)
-  const vergeW = (s, side) => Math.min(HW + 3, world.barrier(s, side) - 0.45);
-  along(0, T.L, HW + 0.1, (s) => vergeW(s, 1), -0.005, mat.verge, 6, 6);
-  along(0, T.L, (s) => (pitRamp(s) ? -HW - 0.1 : -vergeW(s, -1)), -HW - 0.1, -0.005, mat.verge, 6, 6);
+  const vergeW = (s, side) => Math.min(T.hwAt(s) + 3, world.barrier(s, side) - 0.45);
+  along(0, T.L, (s) => T.hwAt(s) + 0.1, (s) => vergeW(s, 1), -0.005, mat.verge, 6, 6);
+  along(0, T.L, (s) => (pitRamp(s) ? -T.hwAt(s) - 0.1 : -vergeW(s, -1)), (s) => -T.hwAt(s) - 0.1, -0.005, mat.verge, 6, 6);
 
   // ---------- muros, tecpro y vallas (y sus segmentos en planta, para saber si tapan un plano)
   const WC = 16, wallGrid = new Map();
@@ -420,6 +429,13 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       return 9 * Math.pow(0.5 + 0.5 * Math.sin(u * 0.006 + Math.sin(z * 0.002) * 2), 2) + 4 * Math.sin(x * 0.011 - z * 0.007) + 1.2 * Math.sin(u * 0.05)
         + Math.max(0, r - 1300) * 0.05;
     }
+    if (autumn) {
+      // Ardenas: lomas redondeadas cubiertas de bosque, valles largos y cerros más altos al fondo
+      // (cerca de la pista, a alturas parecidas a las suyas: -6..25 m; con más relieve quedaba encajada entre paredes)
+      return 22 * (0.5 + 0.5 * Math.sin(x * 0.0021 + 0.7) * Math.cos(z * 0.0026 + 1.9)) + 9 * Math.sin(x * 0.0052 - z * 0.0038)
+        + 4 * Math.sin(x * 0.013 + z * 0.011) + 1.5 * Math.sin(x * 0.041 - z * 0.033) - 4
+        + Math.max(0, r - 1100) * 0.12 * (0.7 + 0.3 * Math.sin(Math.atan2(z - ccz, x - ccx) * 6));
+    }
     if (sunset) {
       // montaña: relieve alpino que asciende en laderas y macizos
       return 46 * (0.5 + 0.5 * Math.sin(x * 0.0028 + 1.1) * Math.cos(z * 0.0022 - 0.4))
@@ -476,6 +492,13 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
         const lit = 0.18 + 0.82 * Math.exp(-Math.max(0, dT - 30) / 220);
         const sandC = [0.78, 0.62, 0.42];
         for (let k = 0; k < 3; k++) col[i * 3 + k] = Math.pow(sandC[k] * jit * (0.9 + 0.1 * Math.sin(x * 0.05)), 2.2) * 1.45 * lit;
+      } else if (autumn) {
+        // otoño: hierba apagada junto a la pista; bajo el bosque, hojarasca rojiza y ocre a manchas; algún prado
+        const grassC = [0.36, 0.42, 0.2], litter = [0.5, 0.3, 0.14], litter2 = [0.58, 0.42, 0.18], meadow = [0.46, 0.48, 0.24];
+        const n1 = hash(Math.floor(x / 31) * 7.3 + Math.floor(z / 29) * 3.9), n2 = 0.5 + 0.5 * Math.sin(x * 0.021 + z * 0.017) * Math.sin(x * 0.007 - z * 0.012);
+        const wf = Math.min(1, Math.max(0, (dT - 45) / 70));
+        const fl = n2 > 0.55 ? litter2 : litter, open = hash(fx * 3.1 + fz * 5.7) < 0.14 ? meadow : fl;
+        for (let k = 0; k < 3; k++) col[i * 3 + k] = Math.pow((grassC[k] * (1 - wf) + open[k] * wf) * jit * (0.9 + 0.2 * n1), 2.2) * 1.4;
       } else if (sunset) {
         // montaña al atardecer: verde alpino en cotas bajas, transición a roca parda y canchales
         const alpine = [0.25, 0.36, 0.18];
@@ -776,10 +799,13 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   grandstand(T.wrap(-300), 560, 1, 22, true, 1);           // tribuna principal frente a boxes
   const cT = (i) => T.corners[i % T.corners.length];
   grandstand(T.wrap(cT(0).sIn - 120), 260, -Math.sign(cT(0).dir) || 1, 16, true, 2);
-  grandstand(T.wrap(cT(4).sIn - 80), 200, -Math.sign(cT(4).dir) || 1, 14, true, 3);
-  grandstand(T.wrap(cT(7).sIn - 150), 240, -Math.sign(cT(7).dir) || 1, 16, false, 4);
-  grandstand(T.wrap(cT(11).sIn - 60), 260, -Math.sign(cT(11).dir) || 1, 16, true, 5);
-  grandstand(T.wrap(cT(1).sIn - 60), 140, -Math.sign(cT(1).dir) || 1, 12, false, 6);
+  // (en el bosque, el público de las curvas está en los taludes, estilo rally: ver buildForest en decor.js)
+  if (!autumn) {
+    grandstand(T.wrap(cT(4).sIn - 80), 200, -Math.sign(cT(4).dir) || 1, 14, true, 3);
+    grandstand(T.wrap(cT(7).sIn - 150), 240, -Math.sign(cT(7).dir) || 1, 16, false, 4);
+    grandstand(T.wrap(cT(11).sIn - 60), 260, -Math.sign(cT(11).dir) || 1, 16, true, 5);
+    grandstand(T.wrap(cT(1).sIn - 60), 140, -Math.sign(cT(1).dir) || 1, 12, false, 6);
+  }
 
   // ---------- pantallas gigantes
   const screen = (s, side, w = 16) => {
@@ -819,12 +845,15 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   // ---------- carteles de distancia y DRS
   {
     const boardTex = (txt, bg = '#ffffff', fg = '#111111') => { const c = document.createElement('canvas'); c.width = 128; c.height = 128; const g = c.getContext('2d'); g.fillStyle = bg; g.fillRect(0, 0, 128, 128); g.fillStyle = fg; g.font = '900 64px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText(txt, 64, 86); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
-    const heavy = T.corners.filter((c) => c.radius < 60);
+    // solo la primera curva de cada grupo (en una chicane, la segunda y la tercera no llevan carteles propios: caían
+    // encima de los de la primera) y nunca en el lado de boxes, donde quedaban sobre el muro del pit lane
+    const cs = T.corners, heavy = cs.filter((c, n) => c.radius < 60 && T.ahead(cs[(n - 1 + cs.length) % cs.length].sOut, c.sIn) > 200);
+    const pitSide = (s) => between(T, s, T.wrap(T.pit.entryA - 60), T.wrap(T.pit.exitB + 80));
     for (const c of heavy) {
-      const side = -(Math.sign(c.dir) || 1);
       for (const dist of [100, 200, 300]) {
         const s = T.wrap(c.sIn - dist + 40);
-        const p = pos(s, side * (HW + 4), 0);
+        let side = -(Math.sign(c.dir) || 1); if (side < 0 && pitSide(s)) side = 1;
+        const p = pos(s, side * Math.min(T.hwAt(s) + 4, world.barrier(s, side) - 1), 0);
         const b = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 1.2), new THREE.MeshStandardMaterial({ map: boardTex(String(dist)) }));
         b.position.set(p[0], p[1] + 1.4, p[2]); b.rotation.y = Math.atan2(T.tx[T.idx(s)], T.tz[T.idx(s)]) + Math.PI; scene.add(b);
         const pole = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.8, 0.08), mat.post); pole.position.set(p[0], p[1] + 0.4, p[2]); scene.add(pole);
@@ -834,7 +863,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       const p = pos(z.a, HW + 3, 0);
       const b = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 1.2), new THREE.MeshBasicMaterial({ map: boardTex('DRS', '#111111', '#ffffff') }));
       b.position.set(p[0], p[1] + 2, p[2]); b.rotation.y = Math.atan2(T.tx[T.idx(z.a)], T.tz[T.idx(z.a)]) + Math.PI; scene.add(b);
-      along(T.wrap(z.detect), 0.4, -HW, HW, 0.013, mat.white, 1, 1, true, 1);
+      along(T.wrap(z.detect), 0.4, (s) => -T.hwAt(s), (s) => T.hwAt(s), 0.013, mat.white, 1, 1, true, 1);
     }
   }
 
@@ -872,6 +901,17 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     scene.environmentIntensity = 0.8;
     world.hemi = new THREE.HemisphereLight(0xaab8ff, 0x3b3226, 0.95); scene.add(world.hemi);
     sun = new THREE.DirectionalLight(0xf4f6ff, 3.1);
+  } else if (autumn) {
+    // otoño nublado: sol alto y tapado (luz difusa, sombras suaves), niebla gris azulada que difumina las lomas del fondo
+    sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(40), THREE.MathUtils.degToRad(200));
+    scene.fog = new THREE.Fog(0xa7adb2, 650, 5200);
+    const envScene = new THREE.Scene();
+    envScene.add(new THREE.Mesh(new THREE.SphereGeometry(100, 16, 8), new THREE.MeshBasicMaterial({ color: 0x9aa1a8, side: THREE.BackSide })));
+    const fl = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), new THREE.MeshBasicMaterial({ color: 0x4a3a2a })); fl.rotation.x = -Math.PI / 2; fl.position.y = -5; envScene.add(fl);
+    scene.environment = pm.fromScene(envScene, 0.04).texture;
+    scene.environmentIntensity = 0.6;
+    const hemi = world.hemi = new THREE.HemisphereLight(0xd6dde4, 0x5a4630, 0.9); scene.add(hemi);
+    sun = new THREE.DirectionalLight(0xfff4e6, 1.7);
   } else if (sunset) {
     // atardecer en la montaña: sol bajo (~10° elevación), cielo naranja/rosado hacia el sol y azul violáceo al otro lado,
     // sombras largas, niebla cálida suave en la distancia, luz hemisférica cálida
@@ -1007,7 +1047,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       const d = (x - T.x[i]) * T.lx[i] + (z - T.z[i]) * T.lz[i];
       const gy = T.y[i];
       const h = y - gy;
-      if (Math.abs(d) > HW + 1) {
+      if (Math.abs(d) > T.hw[i] + 1) {
         const side = d > 0 ? 1 : -1, B = world.barrier(s, side), ad = Math.abs(d);
         const pitZone = side < 0 && B >= 33.9;
         if (pitZone && d < -33 && d > -52 && h < 12.8) return true;                 // edificio de boxes

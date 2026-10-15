@@ -9,7 +9,7 @@ for (const id of Object.keys(CIRCUITS)) {
   }
   let kmax = 0; for (let i = 0; i < T.N; i++) kmax = Math.max(kmax, Math.abs(T.k[i]));
   // recta de boxes: curvatura máxima en [-560, 730]
-  let kp = 0; for (let s = -560; s < 730; s += 2) kp = Math.max(kp, Math.abs(T.k[T.idx(s)]));
+  const K = T.meta.pitK || 1; let kp = 0; for (let s = -560 * K; s < 730 * K; s += 2) kp = Math.max(kp, Math.abs(T.k[T.idx(s)]));
   console.log(id, 'L', T.L.toFixed(0), 'curvas', T.corners.length, 'Rmin', (1 / kmax).toFixed(0), 'sep mín', minSep.toFixed(0), at?.map(q => (q * T.ds).toFixed(0)).join('/'), 'Rmin recta boxes', (1 / kp).toFixed(0),
     'DRS', T.drs.map(z => T.ahead(z.a, z.b).toFixed(0)).join('+'), 'radios', T.corners.map(c => c.radius.toFixed(0)).join(' '));
 }

@@ -23,7 +23,8 @@ export function newBrain(T, drv, rng) {
     const ideal = T.ideal[T.idx(i * step)];
     // número entero de ondas por vuelta: la trazada cierra sin escalón en la meta
     let noise = 0; for (const w of waves) noise += w.a * Math.sin((i * step) / T.L * 6.283 * Math.max(1, Math.round(T.L / w.l)) + w.p);
-    nodes[i] = Math.max(-LIM, Math.min(LIM, ideal * k0 + noise));
+    const lim = Math.min(LIM, T.hwAt(i * step) - CAR_HALF - 0.25);   // (más estrecha donde la pista lo es)
+    nodes[i] = Math.max(-lim, Math.min(lim, ideal * k0 + noise));
   }
   const nz = T.zones.length;
   const commit = new Float32Array(nz);

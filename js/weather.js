@@ -99,9 +99,9 @@ export function buildWeather(scene, world, scenery, renderer, camera, quality) {
 
   function update(dt, sim, camType, visuals) {
     const wx = sim.wx; if (!wx) return;
-    const rainAmt = wx.rain, wet = wx.line * 0.6 + wx.wet * 0.4;
-    // --- cielo y luz: nubla antes de que empiece a llover y se abre despacio
-    const cTarget = Math.min(1, rainAmt * 1.7 + (wx.target > 0.05 ? 0.35 : 0) + wx.wet * 0.25);
+    let rainAmt = wx.rain; const wet = wx.line * 0.6 + wx.wet * 0.4;
+    // --- cielo y luz: nubla antes de que empiece a llover y se abre despacio (en el bosque siempre está cubierto)
+    const cTarget = Math.max(world.autumn ? 0.6 : 0, Math.min(1, rainAmt * 1.7 + (wx.target > 0.05 ? 0.35 : 0) + wx.wet * 0.25));
     cloud += (cTarget - cloud) * Math.min(1, dt / 6);
     if (first) cloud = cTarget;
     world.sun.intensity = base.sun * (1 - (night ? 0.18 : 0.8) * cloud);
@@ -123,6 +123,8 @@ export function buildWeather(scene, world, scenery, renderer, camera, quality) {
     tmp.copy(cam).sub(camPrev).divideScalar(Math.max(1e-3, dt)); if (tmp.length() > 120) tmp.set(0, 0, 0);
     camVel.lerp(tmp, Math.min(1, dt * 6)); camPrev.copy(cam);
     tt = (tt + dt) % 600;
+    // chubasco que solo cae en una parte del circuito (sim.rainCell): donde está la cámara llueve más o menos
+    if (sim.rainCell && rainAmt > 0) { const n = world.nearest(cam.x, cam.z, 6); if (n.i >= 0) rainAmt = Math.min(1, rainAmt * sim.rainCell(n.i * sim.T.ds)); }
     rain.visible = rainAmt > 0.02;
     if (rain.visible) {
       ru.uT.value = tt; ru.uCam.value.copy(cam); ru.uAmt.value = Math.min(1, rainAmt * 1.15);

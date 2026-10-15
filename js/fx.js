@@ -566,7 +566,7 @@ export function buildFx(scene, T, sim, visuals, world) {
 
       const numPts = Math.min(80, Math.floor(g.len * 2.2));
       const seedBase = Math.floor(g.s * 10) + gi * 1000;
-      const baseD = Number.isFinite(g.d) ? g.d : (g.car ? (g.car.d >= 0 ? 1 : -1) * (HALF_W - 2) : 0);
+      const baseD = Number.isFinite(g.d) ? g.d : (g.car ? (g.car.d >= 0 ? 1 : -1) * ((T?.hwAt ? T.hwAt(g.s ?? g.car.s) : HALF_W) - 2) : 0);
       const patchW = Number.isFinite(g.w) ? g.w : 3.5;
 
       for (let k = 0; k < numPts; k++) {
