@@ -240,7 +240,7 @@ async function startScreen() {
   const intro = document.createElement('div'); intro.className = 'modal'; document.body.appendChild(intro);
   intro.innerHTML = `<div class="sheet"><div class="start">
       <div class="st-l">
-        <div class="logo">NEURAL <i>GP</i></div>
+        <div class="logo">F1 AI <i>MANAGER</i></div>
         <p class="tag">Veintidós pilotos con IA que aprenden dando vueltas. Buscan la trazada en libres, la exprimen en clasificación y pelean en carrera. Cada fin de semana empiezan de cero.</p>
         <h3>Circuito</h3>
         <div class="tcards">${Object.values(CIRCUITS).map(trackCard).join('')}</div>

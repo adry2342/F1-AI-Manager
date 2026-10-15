@@ -719,7 +719,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     const yaw = Math.atan2(T.tx[T.idx(s)], T.tz[T.idx(s)]); beam.rotation.y = yaw; beam.castShadow = true; scene.add(beam);
     // banner
     const c = document.createElement('canvas'); c.width = 1024; c.height = 128; const g = c.getContext('2d');
-    g.fillStyle = '#e10600'; g.fillRect(0, 0, 1024, 128); g.fillStyle = '#fff'; g.font = '900 84px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText('NEURAL GRAND PRIX', 512, 94);
+    g.fillStyle = '#e10600'; g.fillRect(0, 0, 1024, 128); g.fillStyle = '#fff'; g.font = '900 84px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText('F1 AI MANAGER', 512, 94);
     const bt = new THREE.CanvasTexture(c); bt.colorSpace = THREE.SRGBColorSpace;
     const ban = new THREE.Mesh(new THREE.PlaneGeometry(2 * HW + 4, 1.5), new THREE.MeshBasicMaterial({ map: bt }));
     ban.position.set(...pos(s - 0.5, 0, 9.3)); ban.rotation.y = yaw + Math.PI; scene.add(ban);
@@ -783,7 +783,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
 
   // ---------- pantallas gigantes
   const screen = (s, side, w = 16) => {
-    const scr = TX.screenTex('NEURAL GP');
+    const scr = TX.screenTex('F1 AI MANAGER');
     const off = world.barrier(s, side) + 26;
     const p = pos(s, side * off, 0);
     const yaw = Math.atan2(T.tx[T.idx(s)], T.tz[T.idx(s)]);

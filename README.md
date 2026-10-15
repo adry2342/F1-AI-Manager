@@ -1,17 +1,56 @@
 # F1 AI Manager
 
-Veintidós pilotos con IA que aprenden a correr. Fin de semana completo: libres → Q1/Q2/Q3 → carrera,
-con paradas, estrategia de neumáticos, lluvia, radio y realización de TV. Hecho con three.js, sin build.
+Veintidós pilotos con IA que aprenden a correr, y tú llevas el muro de uno de los once equipos.
+Fin de semana completo: libres 1 y 2 → Q1/Q2/Q3 → carrera, con reglaje, paradas, estrategia de neumáticos,
+lluvia, radio, repeticiones y realización de TV. Hecho con three.js, sin build.
 
-![Salida en Monte Alto al atardecer](docs/img/salida-atardecer.gif)
+![Adelantamiento en Monte Alto, visto desde el dron](docs/img/adelantamiento-monte-alto.webp)
+
+## En pista
+
+Nadie tiene los adelantamientos ni los accidentes guionizados: salen de la física y de lo que cada piloto ha aprendido.
+Aprietan más de lo que da el coche, se abren, trompean y acaban en el muro; rebufo, DRS y pelea rueda con rueda en las rectas.
 
 | | |
 |---|---|
-| ![Monte Alto al atardecer](docs/img/atardecer-limpia.jpg) | ![Al Noor de noche](docs/img/noche-limpia.jpg) |
-| ![Monte Alto desde el dron](docs/img/atardecer-heli-limpia.jpg) | ![Al Noor desde el dron](docs/img/noche-heli-limpia.jpg) |
-| ![Cámara exterior con HUD](docs/img/atardecer-exterior.jpg) | ![T-Cam de noche](docs/img/noche-tcam.jpg) |
+| ![Trompo y golpe contra las protecciones en Monte Alto](docs/img/choque-monte-alto.webp) | ![Se sale en la frenada y acaba en el muro en Al Noor](docs/img/choque-al-noor.webp) |
 
-![Salida en Al Noor de noche](docs/img/salida-noche.gif)
+| | |
+|---|---|
+| ![Adelantamiento en Al Noor de noche](docs/img/adelantamiento-al-noor.webp) | ![Adelantamiento por dentro en Monte Alto](docs/img/adelantamiento-monte-alto-2.webp) |
+
+| | |
+|---|---|
+| ![Parrilla de Monte Alto](docs/img/monte-alto-parrilla.jpg) | ![Parrilla de Al Noor desde el dron](docs/img/al-noor-parrilla.jpg) |
+| ![Curva de Monte Alto con pianos](docs/img/monte-alto-curva.jpg) | ![Al Noor de noche entre palmeras](docs/img/al-noor-noche.jpg) |
+| ![Monte Alto al atardecer](docs/img/monte-alto-atardecer.jpg) | ![Recta de meta de Al Noor](docs/img/al-noor-recta.jpg) |
+
+## Modo mánager
+
+Eliges equipo y llevas a sus dos pilotos desde el muro: cuándo salen a pista, con qué goma y qué programa
+(lanzadas, tanda seguida o hasta que los llames), reglaje, plan de paradas y, en carrera, ritmo, motor,
+pelea y órdenes de equipo. El equipo te avisa cuando hay que decidir algo, y cada aviso trae su respuesta.
+
+![Muro en carrera](docs/img/manager-carrera.webp)
+
+![Muro con avisos del equipo](docs/img/muro-carrera.jpg)
+
+**Garaje** (botón GARAJE o tecla G):
+
+- **Estrategia**: tandas arrastrables sobre la gráfica de desgaste previsto, sacado de las vueltas que hizo tu equipo en libres.
+- **Reglaje**: alerón y suspensión, en el garaje o con la parrilla retenida antes de dar la salida.
+- **Rendimiento**: cada vuelta de tus pilotos, corregida por gasolina y goma. Se compara por reglaje, goma, ritmo o motor, y se filtra por sesión y por seco o mojado.
+- **Radar**: lluvia prevista para los próximos 15 minutos, agua en la trazada y goma ideal ahora.
+
+| | |
+|---|---|
+| ![Plan de paradas](docs/img/garaje-estrategia.jpg) | ![Reglaje en parrilla](docs/img/garaje-reglaje.jpg) |
+| ![Comparar reglajes](docs/img/rendimiento-comparar.jpg) | ![Todas las vueltas](docs/img/rendimiento-vueltas.jpg) |
+| ![Tiempo frente a desgaste](docs/img/rendimiento-grafica.jpg) | ![Resultado y resumen del muro](docs/img/resultados-carrera.jpg) |
+
+El modo espectador sigue ahí: la retransmisión se realiza sola y eliges piloto y plano cuando quieras.
+
+![Pantalla de inicio](docs/img/portada.jpg)
 
 **Panel de aprendizaje** (tecla L): quién mejora más, evolución de tiempos, trazada frente a la ideal y agarre que se atreve a usar en cada curva.
 
@@ -22,11 +61,9 @@ con paradas, estrategia de neumáticos, lluvia, radio y realización de TV. Hech
 Se elige en la pantalla de inicio:
 
 - **Neural Park**: permanente, de día, 5,2 km, escapatorias de grava y hierba.
-- **Porto Cidade**: urbano, 5,4 km de calles en ángulo recto, muros a 2 m, puerto con yates.
+- **Porto Cidade**: urbano y rápido junto al puerto, 6,2 km, muros cerca y yates.
 - **Al Noor**: desierto de noche con torres de focos, 6 km, hotel iluminado.
-- **Monte Alto**: montaña al atardecer, con desniveles fuertes.
-
-Cada circuito guarda por separado lo que aprenden los pilotos.
+- **Monte Alto**: montaña al atardecer, 5,9 km con desniveles fuertes.
 
 ## Jugar
 
@@ -38,12 +75,14 @@ Opciones por URL: `?q=low` (calidad baja), `?laps=10`, `?track=gp|urban|night|mo
 
 | Tecla | Acción |
 |---|---|
+| G | garaje (modo mánager) |
 | A | realización automática on/off |
 | P | automática pegada al piloto elegido (solo cambia de plano) |
-| 1–8 | Exterior, Cockpit, T-Cam, Morro, Trasera, Heli, Pista, Libre |
+| 1–8 | Exterior, Cockpit, T-Cam, Morro, Trasera, Dron, Pista, Libre |
 | ← → / [ ] | piloto anterior / siguiente (o clic en la torre) |
 | Espacio | pausa · `+`/`−` velocidad |
-| L | panel de aprendizaje · M sonido · H ocultar HUD |
+| R | repetición de lo último |
+| L | panel de aprendizaje · M sonido · H ocultar HUD · Esc menú |
 
 ## Física (js/sim.js)
 
@@ -59,11 +98,12 @@ aire sucio, gomas frías, variación de cada entrada); se abren, se salen, tromp
 - **Degradación** por compuesto medida en tandas largas → decide la estrategia de carrera.
 - **Adelantamientos**: en qué curvas le salen (se atreve más donde ha tenido éxito).
 
-Se guarda en `localStorage` y continúa el siguiente fin de semana.
+Seco y mojado se aprenden por separado. Cada fin de semana empiezan de cero.
 
 ## Estructura
 
 `track.js` circuito · `sim.js` física, pelea en pista, boxes, sesiones · `brain.js` aprendizaje ·
+`manager.js` muro y garaje · `teamsim.js` simulador del equipo · `replay.js` repeticiones ·
 `carModel.js` monoplaza · `world.js` pista y boxes · `scenery.js` alrededores · `director.js` cámaras ·
 `decor.js` ciudad, puerto y focos · `ui.js` HUD · `audio.js` motor · `tools/` simulación sin gráficos para calibrar
-(`node tools/weekend.mjs track=urban`, `tools/slide.mjs`, `tools/overtakes.mjs`, `tools/tracks.mjs`).
+(`node tools/weekend.mjs track=urban`, `tools/levers.mjs`, `tools/overtakes.mjs`, `tools/e2e.mjs`).

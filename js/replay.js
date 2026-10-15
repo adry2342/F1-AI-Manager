@@ -22,7 +22,7 @@ export class Replay {
     });
     sim.on((e) => this.onEvent(e));
     const w = this.wipeEl = document.createElement('div'); w.id = 'wipe';
-    w.innerHTML = '<i class="a"></i><i class="b"><span><em>NGP</em><b></b></span></i>';
+    w.innerHTML = '<i class="a"></i><i class="b"><span><em>F1 AI</em><b></b></span></i>';
     document.body.appendChild(w);
   }
 
