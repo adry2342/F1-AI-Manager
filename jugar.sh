@@ -1,18 +1,13 @@
 #!/usr/bin/env bash
-# Arranca un servidor local (sin caché, para que siempre cargue la última versión) y abre el juego.
+# Arranca el servidor del juego (un jugador y multijugador) y abre el navegador en http://localhost:8765/
+# Uso: ./jugar.sh [puerto]
 cd "$(dirname "$0")"
-PORT=${PORT:-8765}
-python3 - "$PORT" <<'PY' >/dev/null 2>&1 &
-import sys, http.server
-class H(http.server.SimpleHTTPRequestHandler):
-    def end_headers(self):
-        self.send_header('Cache-Control', 'no-store')
-        super().end_headers()
-http.server.ThreadingHTTPServer(('', int(sys.argv[1])), H).serve_forever()
-PY
-PID=$!
-trap 'kill $PID 2>/dev/null' EXIT
-sleep 0.6
-xdg-open "http://localhost:$PORT/" >/dev/null 2>&1 || echo "Abre http://localhost:$PORT/"
-echo "Servidor en http://localhost:$PORT/ — Ctrl+C para parar"
-wait $PID
+if [ -f ./F1-AI-Manager ]; then
+  chmod +x ./F1-AI-Manager 2>/dev/null
+  exec ./F1-AI-Manager "$@"
+fi
+if command -v node >/dev/null 2>&1; then
+  exec node server.js "$@"
+fi
+echo "Hace falta Node.js (https://nodejs.org) o el ejecutable F1-AI-Manager junto a este script."
+exit 1

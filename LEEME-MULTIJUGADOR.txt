@@ -1,0 +1,63 @@
+F1 AI MANAGER - MULTIJUGADOR ONLINE
+===================================
+
+Todos estais en LA MISMA carrera: los mismos 22 coches en la misma pista. Cada amigo lleva su propio
+equipo (sus dos pilotos) durante todo el fin de semana: Libres 1 y 2, Q1/Q2/Q3 y carrera.
+Si tu llamas a boxes a tu piloto, tus amigos lo ven entrar en boxes en su pantalla. Los demas equipos
+los lleva la IA.
+
+ARRANCAR
+--------
+  Windows:  doble clic en F1-AI-Manager.exe   (si Windows avisa: "Mas informacion" > "Ejecutar de todas formas")
+  Linux:    ./jugar.sh    (o ./F1-AI-Manager)
+
+Se abre una ventana de consola (el servidor; no la cierres) y el navegador con el juego.
+Usad Chrome o Edge.
+
+JUGAR CON AMIGOS
+----------------
+1. El ANFITRION arranca el juego, elige "Multijugador", pone su nombre y pulsa "Crear partida".
+   En su sala salen dos formas de invitar:
+     - MISMA RED (casa): una direccion como http://192.168.1.41:8765
+     - POR INTERNET: pulsa "Crear enlace para jugar por Internet" y sale un enlace como
+       https://palabras-al-azar.trycloudflare.com  (boton "Copiar enlace"). Mandaselo a tus amigos.
+       No hay que abrir puertos ni instalar VPN. La primera vez descarga el conector oficial de
+       Cloudflare (unos 55 MB) y lo guarda para las siguientes.
+   Elige circuito (a la izquierda), tiempo y vueltas.
+2. Cada AMIGO abre ese enlace o direccion en Chrome/Edge (no necesita instalar nada).
+   Tambien puede arrancar su propio ejecutable, elegir "Multijugador", pegar el enlace y pulsar "Unirse".
+3. Cada uno elige equipo (o espectador) y pulsa "Estoy listo". El anfitrion pulsa "Empezar".
+
+El enlace de Internet cambia cada vez que se arranca el servidor. Mientras siga abierto vale para todo
+el fin de semana (y para volver a la sala).
+
+SIN DESINCRONIZACIONES
+----------------------
+Todos los equipos calculan la misma carrera y el anfitrion reparte las ordenes de cada muro en el
+instante exacto en que se aplican. Cada 5 segundos se comprueba que todos llevan exactamente lo mismo;
+si alguien se separa, el anfitrion le manda una copia completa de la partida y se corrige solo en un
+par de segundos (aviso: "Corregida una diferencia con el anfitrion").
+
+SI ALGUIEN SE DESCONECTA
+------------------------
+- La partida sigue; su equipo continua con sus ultimas ordenes.
+- Para volver: pulsa "Reconectar", o recarga la pagina (F5), o entra otra vez con EL MISMO NOMBRE.
+  Recupera su equipo y la partida tal y como esta en ese momento.
+- Alguien nuevo puede entrar a mitad de partida, pero como espectador (los equipos se eligen en la sala).
+- Si el ANFITRION cierra el juego o la consola, la partida se acaba para todos.
+
+DURANTE LA PARTIDA
+------------------
+- Tu muro y tu garaje solo controlan tu equipo.
+- PAUSA (Espacio o boton II): inmediata, cualquiera puede pausar.
+- SEGUIR, CAMBIAR VELOCIDAD, SALTAR SESION, PASAR A LA SIGUIENTE SESION y VOLVER A LA SALA: se votan.
+  Sale un aviso arriba con Si / No; hace falta que todos digan que si (30 s para votar).
+- En la parrilla, la salida se da cuando todos los muros han pulsado "Listo para la salida".
+- La repeticion (R) esta desactivada en multijugador.
+- Si el anfitrion minimiza el navegador la partida sigue (pero no cierres su pestana ni la consola).
+
+OPCIONES
+--------
+  Otro puerto:  F1-AI-Manager.exe 9000
+  Sin abrir el navegador:  F1-AI-Manager.exe --no-open
+  Tambien vale tener cloudflared.exe (o cloudflared en Linux) junto al ejecutable para no descargarlo.
