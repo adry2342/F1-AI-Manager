@@ -15,6 +15,10 @@ const PLAN = { inside: 'por dentro', outside: 'por fuera', cutback: 'cruce a la 
 const NEXT = { FP: 'FP2', FP2: 'Q1', Q1: 'Q2', Q2: 'Q3', Q3: 'RACE' };
 const NEXT_LABEL = { FP: 'Ir a Libres 2', FP2: 'Ir a la clasificación', Q1: 'Ir a la Q2', Q2: 'Ir a la Q3', Q3: 'Ir a la carrera', RACE: 'Nuevo fin de semana' };
 
+// color del dorsal en la ficha: el más luminoso de los dos del equipo (con el c2 oscuro, p. ej. azul marino, no se leía)
+const lum = (h) => { const n = parseInt(h.slice(1), 16); return 0.2126 * (n >> 16) + 0.7152 * ((n >> 8) & 255) + 0.0722 * (n & 255); };
+const numCol = (t) => (t.c2 === '#FFFFFF' || lum(t.c1) > lum(t.c2) ? t.c1 : t.c2);
+
 export class UI {
   constructor(app) {
     this.app = app; this.sim = app.sim; this.T = app.T; this.dir = app.director;
@@ -55,7 +59,7 @@ export class UI {
     const c = $('controls');
     const camBtns = CAM_TYPES.map((t) => `<button data-cam="${t}">${CAM_LABEL[t]}</button>`).join('');
     c.innerHTML = `
-      <div class="grp"><button id="bAuto" class="on" title="Realización automática (A)">AUTO</button><button id="bAutoD" title="Automática pegada al piloto elegido: solo cambia de plano (P)">AUTO PILOTO</button>${camBtns}</div>
+      <div class="grp"><button id="bAuto" class="on" title="Realización automática (A)">Auto</button><button id="bAutoD" title="Automática pegada al piloto elegido: solo cambia de plano (P)">Auto piloto</button>${camBtns}</div>
       <div class="grp"><button id="bPrev" title="Piloto anterior ([)">‹</button><span class="lbl" id="focusLbl">—</span><button id="bNext" title="Piloto siguiente (])">›</button></div>
       <div class="spacer"></div>
       <div class="grp" id="speeds"><button id="bReplay" title="Repetición de los últimos 12 s del piloto enfocado (R)">Repetir</button>${[0, 1, 2, 4, 8, 16, 32].map((s) => `<button data-speed="${s}">${s === 0 ? 'II' : s + '×'}</button>`).join('')}</div>
@@ -70,6 +74,14 @@ export class UI {
     $('bSound').onclick = () => { this.app.audio.toggle(); this.syncButtons(); };
     $('bLearn').onclick = () => this.showLearning();
     $('bReplay').onclick = () => { if (this.app.mp) return; const R = this.app.replay; if (R?.active) R.stop(); else R?.replayLast(); };
+    // vertical: pestañas bajo la imagen (Muro solo en mánager) y un botón de menú, que en el móvil no hay Esc
+    if (!$('ptabs')) {
+      const t = document.createElement('div'); t.id = 'ptabs';
+      t.innerHTML = [['wall', 'Muro'], ['times', 'Tiempos'], ['car', 'Piloto'], ['map', 'Mapa']].map(([k, l]) => `<button data-pt="${k}">${l}<em></em></button>`).join('') + '<button data-pt="menu" title="Menú" style="flex:0 0 46px">☰</button>';
+      $('hud').appendChild(t);
+      t.onclick = (e) => { const k = e.target.closest('button')?.dataset.pt; if (k === 'menu') this.pauseMenu(); else if (k) this.setTab(k, true); };
+      requestAnimationFrame(() => this.setTab(null));
+    }
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
@@ -87,6 +99,16 @@ export class UI {
       else if (k === 'h') $('hud').classList.toggle('hidden');
       else if (k === 'escape') { if (document.querySelector('.modal')) this.closeModal(); else this.pauseMenu(); }
     });
+  }
+  // pestaña del panel vertical (se recuerda por modo; el Muro solo existe en mánager)
+  setTab(k, save = false) {
+    const mgr = document.body.classList.contains('mgr'), key = 'ngp-ptab-' + (mgr ? 'mgr' : 'watch');
+    if (!k) { try { k = localStorage.getItem(key); } catch { k = null; } }
+    if (!k || (k === 'wall' && !mgr)) k = mgr ? 'wall' : 'times';
+    if (k === 'times' && matchMedia('(min-width: 700px)').matches) k = mgr ? 'wall' : 'car';   // (en ancho los tiempos están siempre)
+    document.body.dataset.pt = k;
+    for (const b of document.querySelectorAll('#ptabs [data-pt]')) b.classList.toggle('on', b.dataset.pt === k);
+    if (save) try { localStorage.setItem(key, k); } catch { /* sin almacenamiento */ }
   }
   cycle(dir) {
     const list = this.order().filter((c) => !c.out);
@@ -120,7 +142,7 @@ export class UI {
     const sim = this.sim, ss = sim.session; if (!ss) return;
     const race = ss.id === 'RACE';
     const order = this.order();
-    $('sessName').textContent = race ? `VUELTA ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : ss.short === 'FP' ? 'LIBRES 1' : ss.short === 'FP2' ? 'LIBRES 2' : ss.short;
+    $('sessName').textContent = race ? `Vuelta ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : ss.short === 'FP' ? 'Libres 1' : ss.short === 'FP2' ? 'Libres 2' : ss.short;
     $('sessSub').textContent = race ? (this.mode === 'interval' ? 'Intervalo' : 'Líder') : isFP(ss.short) ? 'Entrenamientos' : 'Clasificación';
     const cut = SESSIONS[ss.id]?.cut;
     const best = order.find((c) => isFinite(c.best))?.best;
@@ -128,21 +150,21 @@ export class UI {
     order.forEach((car, p) => {
       let gap = '', tag = '', cls = '', gapCls = '';
       if (race) {
-        if (car.retired) { gap = '<span class="tag dnf" style="position:static">OUT</span>'; cls = 'out'; }
-        else if (p === 0) gap = car.finished ? 'GANADOR' : 'LÍDER';
+        if (car.retired) { gap = '<span class="tag dnf" style="position:static">Fuera</span>'; cls = 'out'; }
+        else if (p === 0) gap = car.finished ? 'Ganador' : 'Líder';
         else {
           const ref = this.mode === 'interval' ? order[p - 1] : order[0];
           const laps = Math.floor((ref.dist - car.dist) / this.T.L + (ref.finished && !car.finished ? 0 : 0.0001));
-          if (laps >= 1) gap = `+${laps} ${laps === 1 ? 'VUELTA' : 'VUELTAS'}`;
+          if (laps >= 1) gap = `+${laps} ${laps === 1 ? 'vuelta' : 'vueltas'}`;
           else gap = fmtGap(sim.gapTo(car, ref));
         }
-        if (car.inPit && !car.retired && !car.finished) gap = '<span class="tag pit" style="position:static">PIT</span>';
-        if (sim.session.phase === 'grid' || sim.session.phase === 'lights') gap = p === 0 ? 'POLE' : '';
+        if (car.inPit && !car.retired && !car.finished) gap = '<span class="tag pit" style="position:static">Pit</span>';
+        if (sim.session.phase === 'grid' || sim.session.phase === 'lights') gap = p === 0 ? 'Pole' : '';
         if (this.sim.fastest?.car === car) gapCls = 'purple';
       } else {
         if (isFinite(car.best)) gap = p === 0 ? fmtLap(car.best) : fmtGap(car.best - best);
         else gap = '—';
-        if (car.state === 'garage' && !car.out) gap = '<span class="tag pit" style="position:static">BOX</span> ' + gap;
+        if (car.state === 'garage' && !car.out) gap = '<span class="tag pit" style="position:static">Box</span> ' + gap;
         if (car.lapKind === 'push' && car.state !== 'garage' && car.secCol) gap = `<span class="secs">${[0, 1, 2].map((k) => `<i class="${car.secCol?.[k] || ''}"></i>`).join('')}</span>` + gap;
         if (car.out) cls = 'out';
         if (cut && p === cut) cls += ' cut';
@@ -167,7 +189,7 @@ export class UI {
     const chq = ss.phase === 'flag' || ss.phase === 'done';
     flag.className = chq ? 'CHQ' : sim.flag;
     const pre = race && (ss.phase === 'grid' || ss.phase === 'lights');
-    flag.textContent = chq ? '' : pre ? 'PARRILLA' : sim.flag === 'VSC' ? 'VSC' : 'VERDE';
+    flag.textContent = chq ? '' : pre ? 'Parrilla' : sim.flag === 'VSC' ? 'VSC' : 'Verde';
     if (pre) flag.className = 'PRE';
     // tiempo: lluvia y agua en pista
     const wx = sim.wx, wxEl = $('wx');
@@ -175,8 +197,8 @@ export class UI {
       const on = wx.rain > 0.03 || wx.wet > 0.05 || wx.target > 0.05;
       wxEl.classList.toggle('hidden', !on);
       if (on) {
-        const lbl = wx.rain > 0.55 ? 'LLUVIA FUERTE' : wx.rain > 0.2 ? 'LLUVIA' : wx.rain > 0.03 ? 'LLOVIZNA' : wx.wet > 0.05 ? 'SECÁNDOSE' : 'NUBES';
-        wxEl.innerHTML = `<span class="ic">${wx.rain > 0.03 ? '☂' : '☁'}</span><span class="l">${lbl}</span><span class="w" title="Agua en la trazada">${Math.round(wx.line * 100)}%</span>${wx.noDRS ? '<span class="d">DRS OFF</span>' : ''}`;
+        const lbl = wx.rain > 0.55 ? 'Lluvia fuerte' : wx.rain > 0.2 ? 'Lluvia' : wx.rain > 0.03 ? 'Llovizna' : wx.wet > 0.05 ? 'Secándose' : 'Nubes';
+        wxEl.innerHTML = `<span class="ic">${wx.rain > 0.03 ? '☂' : '☁'}</span><span class="l">${lbl}</span><span class="w" title="Agua en la trazada">${Math.round(wx.line * 100)}%</span>${wx.noDRS ? '<span class="d">Sin DRS</span>' : ''}`;
       }
     }
   }
@@ -204,7 +226,7 @@ export class UI {
     $('card').innerHTML = `
       <div class="top"><div class="pos">${race || isFinite(car.best) ? p + 1 : '–'}</div><div class="stripe" style="background:${car.team.c1}"></div>
         <div class="who"><span class="n">${esc(car.drv.first)} · ${esc(car.team.name)}</span><span class="ln">${esc(car.drv.last)}</span></div>
-        <div class="num" style="color:${car.team.c2 === '#FFFFFF' ? car.team.c1 : car.team.c2}">${car.drv.num}</div></div>
+        <div class="num" style="color:${numCol(car.team)}">${car.drv.num}</div></div>
       ${this.deltaRow(car, race)}
       <div class="info">
         <div><span class="k">Neumático</span><span class="v">${tyreHTML(car.tyre.c)} ${Math.round((1 - car.tyre.wear) * 100)}%</span></div>
@@ -242,8 +264,8 @@ export class UI {
     $('tele').innerHTML = `
       <div class="spd"><b>${kmh}</b><span>KM/H</span><div class="gear">${car.gear === 0 ? 'N' : car.gear}</div></div>
       <div class="rpm"><i style="clip-path: inset(0 ${100 - Math.max(0, Math.min(100, (car.rpm - 6500) / 58))}% 0 0)"></i></div>
-      <div class="pedals"><span>ACEL</span><div class="ped thr"><i style="width:${Math.round(car.throttle * 100)}%"></i></div><span>FRENO</span><div class="ped brk"><i style="width:${Math.round(car.brake * 100)}%"></i></div></div>
-      <div class="row"><span class="pill ${drs}">DRS</span>${car.inPit ? '<span class="pill pit">LIMITADOR</span>' : ''}<span class="pill">${car.tyre.age} VTAS</span><span class="pill">${Math.round(car.fuel)} KG</span></div>`;
+      <div class="pedals"><span>Acel.</span><div class="ped thr"><i style="width:${Math.round(car.throttle * 100)}%"></i></div><span>Freno</span><div class="ped brk"><i style="width:${Math.round(car.brake * 100)}%"></i></div></div>
+      <div class="row"><span class="pill ${drs}">DRS</span>${car.inPit ? '<span class="pill pit">Limitador</span>' : ''}<span class="pill">${car.tyre.age} vtas</span><span class="pill">${Math.round(car.fuel)} kg</span></div>`;
   }
 
   // ---------------------------------------------------------- pelea
@@ -259,7 +281,7 @@ export class UI {
     else if (bh && !bh.inPit && !bh.retired && sim.gapTo(bh, car) < 1.0) { a = car; b = bh; }
     if (!a) { el.classList.add('hidden'); return; }
     el.classList.remove('hidden');
-    el.innerHTML = `<div class="ttl">LUCHA POR P${order.indexOf(a) + 1}</div><div class="d"><i style="background:${a.team.c1}"></i>${a.code}</div><div class="gap">${sim.gapTo(b, a).toFixed(3)}</div><div class="d"><i style="background:${b.team.c1}"></i>${b.code}</div>`;
+    el.innerHTML = `<div class="ttl">Lucha por P${order.indexOf(a) + 1}</div><div class="d"><i style="background:${a.team.c1}"></i>${a.code}</div><div class="gap">${sim.gapTo(b, a).toFixed(3)}</div><div class="d"><i style="background:${b.team.c1}"></i>${b.code}</div>`;
   }
 
   // ---------------------------------------------------------- clasificación: los 3 mejores en vuelta lanzada
@@ -305,24 +327,24 @@ export class UI {
     const sim = this.sim, race = sim.session?.id === 'RACE';
     const c = e.car;
     switch (e.type) {
-      case 'overtake': if (e.how === 'pista' && (e.pos <= 12 || c === this.dir.focus)) this.note('green', 'ADELANTAMIENTO', `<b>${c.code}</b> pasa a <b>${e.other.code}</b>${e.plan && e.plan !== 'inside' ? ' ' + PLAN[e.plan] : ''}${e.corner ? ' en ' + e.corner : ''} · P${e.pos}`); break;
-      case 'pitdone': this.note('blue', 'PIT STOP', `<b>${c.code}</b> ${e.time.toFixed(1)} s · ${COMPOUNDS[e.c].name.toLowerCase()}`); break;
-      case 'fastest': this.note('purple', race ? 'VUELTA RÁPIDA' : 'MEJOR TIEMPO', `<b>${c.code}</b> ${fmtLap(e.time)}`); break;
-      case 'mistake': if (e.kind !== 'wide' || c === this.dir.focus) this.note('yellow', e.kind === 'spin' ? 'TROMPO' : e.kind === 'off' ? 'FUERA DE PISTA' : 'SE ABRE', `<b>${c.code}</b>${e.corner ? ' en ' + e.corner : ''}`); break;
-      case 'retire': this.note('red', 'ABANDONO', `<b>${c.code}</b> · ${e.why}`, 8000); break;
-      case 'contact': if (e.wall) { if (e.sev > 7) this.note('yellow', 'CONTRA LAS BARRERAS', `<b>${c.code}</b> golpea la barrera`); } else if (e.sev > 7) this.note('yellow', 'TOQUE', `<b>${c.code}</b> y <b>${e.other.code}</b>`); break;
-      case 'limits': if (!race) this.note('yellow', 'TIEMPO BORRADO', `<b>${c.code}</b> · límites de pista${e.corner ? ' en ' + e.corner : ''}`); break;
-      case 'knockout': this.note('red', 'ELIMINADO', `<b>${c.code}</b> fuera en ${sim.session.id}`, 7000); break;
-      case 'flag': this.note(e.flag === 'VSC' ? 'yellow' : 'green', e.flag === 'VSC' ? 'VSC' : 'PISTA LIBRE', e.flag === 'VSC' ? 'Coche de seguridad virtual' : 'Bandera verde'); break;
-      case 'chequered': this.note('green', 'BANDERA', race && c ? `<b>${c.code}</b> gana el Gran Premio` : 'Fin de la sesión', 8000); break;
-      case 'start': this.go('¡SEMÁFORO APAGADO!'); break;
+      case 'overtake': if (e.how === 'pista' && (e.pos <= 12 || c === this.dir.focus)) this.note('green', 'Adelantamiento', `<b>${c.code}</b> pasa a <b>${e.other.code}</b>${e.plan && e.plan !== 'inside' ? ' ' + PLAN[e.plan] : ''}${e.corner ? ' en ' + e.corner : ''} · P${e.pos}`); break;
+      case 'pitdone': this.note('blue', 'Parada', `<b>${c.code}</b> ${e.time.toFixed(1)} s · ${COMPOUNDS[e.c].name.toLowerCase()}`); break;
+      case 'fastest': this.note('purple', race ? 'Vuelta rápida' : 'Mejor tiempo', `<b>${c.code}</b> ${fmtLap(e.time)}`); break;
+      case 'mistake': if (e.kind !== 'wide' || c === this.dir.focus) this.note('yellow', e.kind === 'spin' ? 'Trompo' : e.kind === 'off' ? 'Fuera de pista' : 'Se abre', `<b>${c.code}</b>${e.corner ? ' en ' + e.corner : ''}`); break;
+      case 'retire': this.note('red', 'Abandono', `<b>${c.code}</b> · ${e.why}`, 8000); break;
+      case 'contact': if (e.wall) { if (e.sev > 7) this.note('yellow', 'Contra la barrera', `<b>${c.code}</b> golpea la barrera`); } else if (e.sev > 7) this.note('yellow', 'Toque', `<b>${c.code}</b> y <b>${e.other.code}</b>`); break;
+      case 'limits': if (!race) this.note('yellow', 'Tiempo borrado', `<b>${c.code}</b> · límites de pista${e.corner ? ' en ' + e.corner : ''}`); break;
+      case 'knockout': this.note('red', 'Eliminado', `<b>${c.code}</b> fuera en ${sim.session.id}`, 7000); break;
+      case 'flag': this.note(e.flag === 'VSC' ? 'yellow' : 'green', e.flag === 'VSC' ? 'VSC' : 'Pista libre', e.flag === 'VSC' ? 'Coche de seguridad virtual' : 'Bandera verde'); break;
+      case 'chequered': this.note('green', 'Bandera', race && c ? `<b>${c.code}</b> gana el Gran Premio` : 'Fin de la sesión', 8000); break;
+      case 'start': this.go('¡Semáforo apagado!'); break;
       case 'weather': {
-        const W = { rainStart: ['EMPIEZA A LLOVER', 'La pista se va a mojar'], rainMore: ['LLUEVE MÁS', 'Más agua en la pista'], rainLess: ['LLUEVE MENOS', 'La lluvia afloja'], rainStop: ['DEJA DE LLOVER', 'La trazada empezará a secarse'], drsOff: ['DRS DESACTIVADO', 'Pista mojada'], drsOn: ['DRS ACTIVADO', 'La pista se ha secado'] }[e.what];
+        const W = { rainStart: ['Empieza a llover', 'La pista se va a mojar'], rainMore: ['Llueve más', 'Más agua en la pista'], rainLess: ['Llueve menos', 'La lluvia afloja'], rainStop: ['Deja de llover', 'La trazada empezará a secarse'], drsOff: ['Sin DRS', 'Pista mojada'], drsOn: ['DRS activado', 'La pista se ha secado'] }[e.what];
         if (W) this.note(e.what === 'drsOn' || e.what === 'rainStop' ? 'green' : 'blue', W[0], W[1], 7000);
         break;
       }
       case 'lap': if (!race && c === this.dir.focus && this.dir.auto) this.lapPop(c, e); break;
-      case 'session': $('feed').innerHTML = ''; this.note('green', 'SESIÓN', SESSIONS[e.id].label); break;
+      case 'session': $('feed').innerHTML = ''; this.note('green', 'Sesión', SESSIONS[e.id].label); break;
     }
   }
   // tiempo de vuelta del coche que se está viendo (libres/clasificación): posición y diferencia
@@ -330,10 +352,10 @@ export class UI {
     const sim = this.sim, cls = sim.classification().filter((x) => isFinite(x.best));
     const p = cls.indexOf(c) + 1, cut = SESSIONS[sim.session.id].cut;
     let tag, cl;
-    if (!e.best) { tag = `SIN MEJORAR · P${p}`; cl = 'down'; }
+    if (!e.best) { tag = `Sin mejorar · P${p}`; cl = 'down'; }
     else if (p === 1) { tag = cls[1] ? `P1 · −${(cls[1].best - c.best).toFixed(3)}` : 'P1'; cl = 'purple'; }
     else { tag = `P${p} · +${(c.best - cls[0].best).toFixed(3)}`; cl = cut && p > cut ? 'red' : 'up'; }
-    const zone = e.best && cut && !isFP(sim.session.id) ? (p > cut ? 'ZONA DE ELIMINACIÓN' : p > cut - 3 ? 'POR POCO DENTRO' : '') : '';
+    const zone = e.best && cut && !isFP(sim.session.id) ? (p > cut ? 'Zona de eliminación' : p > cut - 3 ? 'Por poco dentro' : '') : '';
     $('lapPop')?.remove();
     const d = document.createElement('div'); d.id = 'lapPop';
     d.innerHTML = `<i style="background:${c.team.c1}"></i><b>${c.code}</b><span class="t">${fmtLap(e.time)}</span><span class="r ${cl}">${tag}</span>${zone ? `<span class="z">${zone}</span>` : ''}`;
@@ -374,12 +396,12 @@ export class UI {
     g.lineJoin = 'round';
     g.strokeStyle = 'rgba(255,255,255,0.18)'; g.lineWidth = 14; g.stroke(this.mapPath);
     g.strokeStyle = '#e8e8ee'; g.lineWidth = 5; g.stroke(this.mapPath);
-    g.font = '700 19px "Titillium Web", Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = '700 19px Figtree, Arial'; g.textAlign = 'center'; g.textBaseline = 'middle';
     g.fillStyle = 'rgba(255,255,255,0.8)';
     for (const [x, y, t] of this.mapTurns) g.fillText(t, x, y);
     g.textAlign = 'start'; g.textBaseline = 'alphabetic';
     // sectores
-    const cols = ['#e10600', '#2f80ed', '#ffd12e'];
+    const cols = ['#ff4b45', '#3d8bff', '#ffd23f'];
     T.sectors.forEach((s, k) => { T.pos(s, 0, P); const [x, y] = this.mapXY(P[0], P[2]); g.fillStyle = cols[k]; g.fillRect(x - 3, y - 3, 6, 6); });
     const order = this.order().slice().reverse();
     for (const car of order) {
@@ -388,7 +410,7 @@ export class UI {
       const f = car === this.dir.focus;
       g.beginPath(); g.arc(x, y, f ? 9 : 6, 0, 7); g.fillStyle = car.team.c1; g.fill();
       g.lineWidth = f ? 3 : 1.5; g.strokeStyle = f ? '#fff' : 'rgba(255,255,255,0.7)'; g.stroke();
-      if (f) { g.font = '900 20px "Titillium Web", Arial'; g.fillStyle = '#fff'; g.fillText(car.code, x + 12, y - 8); }
+      if (f) { g.font = '800 20px Figtree, Arial'; g.fillStyle = '#fff'; g.fillText(car.code, x + 12, y - 8); }
     }
   }
 
@@ -408,7 +430,7 @@ export class UI {
     if (!show) { el?.remove(); return; }
     if (el) return;
     el = document.createElement('div'); el.id = 'nextBar';
-    el.innerHTML = `<span>SESIÓN TERMINADA</span><button class="btn ghost" data-k="res">Ver resultados</button><button class="btn" data-k="next">${this.nextLabel(R[0])}</button>`;
+    el.innerHTML = `<span>Sesión terminada</span><button class="btn ghost" data-k="res">Ver resultados</button><button class="btn" data-k="next">${this.nextLabel(R[0])}</button>`;
     el.onclick = (e) => { const k = e.target.closest('button')?.dataset.k; if (k === 'res') this.results(...R); else if (k === 'next') { el.remove(); this.app.nextSession(); } };
     $('hud').appendChild(el);
   }
@@ -423,9 +445,10 @@ export class UI {
     const was = this.app.speed, sim = this.sim, ss = sim.session;
     const what = ss ? `${SESSIONS[ss.id].label}${ss.id === 'RACE' ? ` · vuelta ${Math.max(1, (sim.raceOrder?.[0]?.lap ?? 0) + 1)} de ${sim.raceLaps}` : ''}` : '';
     const m = this.modal(`<div class="pause">
-        <div class="ph"><span class="kicker">PAUSA</span><b>${esc(this.T.meta.name)}</b><span>${what}</span></div>
+        <div class="ph"><span class="kicker">Pausa</span><b>${esc(this.T.meta.name)}</b><span>${what}</span></div>
         <button class="btn big" id="pGo">Seguir</button>
         <div class="prow"><button id="pReplay">Repetición</button><button id="pLearn">IA · Aprendizaje</button><button id="pSound">${this.app.audio?.on ? 'Silenciar' : 'Activar sonido'}</button></div>
+        ${this.app.manager ? `<button class="ptog" id="pAl">Parar la sesión con cada aviso <b>${this.app.manager.pauseOnAlert ? 'Sí' : 'No'}</b></button>` : ''}
         <p class="keys"><b>A</b> auto · <b>1–8</b> planos · <b>Espacio</b> pausa · <b>+/−</b> velocidad · <b>R</b> repetición · <b>L</b> aprendizaje · <b>H</b> ocultar HUD</p>
         <button class="danger" id="pRestart">${this.app.mp ? 'Proponer volver a la sala' : 'Reiniciar fin de semana'}</button>
         <p class="warn">Los pilotos olvidan todo lo aprendido y se vuelve a la pantalla de inicio.</p>
@@ -438,6 +461,7 @@ export class UI {
     m.querySelector('#pLearn').onclick = () => this.showLearning();
     m.querySelector('#pSound').onclick = (e) => { this.app.audio.toggle(); this.syncButtons(); e.target.textContent = this.app.audio.on ? 'Silenciar' : 'Activar sonido'; };
     m.querySelector('#pRestart').onclick = () => this.app.restart();
+    const pa = m.querySelector('#pAl'); if (pa) pa.onclick = () => { const M = this.app.manager; M.pauseOnAlert = !M.pauseOnAlert; M.renderAlerts(); pa.querySelector('b').textContent = M.pauseOnAlert ? 'Sí' : 'No'; };
   }
   modal(html) {
     this.closeModal();
@@ -466,7 +490,7 @@ export class UI {
       : cut ? `Quedan eliminados del ${cut + 1}.º al ${id === 'Q1' ? 22 : 16}.º.` : id === 'Q3' ? `Pole para <b>${cls[0].drv.first} ${cls[0].drv.last}</b>.` : 'Los pilotos han probado trazadas y frenadas en cada curva. Mira el panel de IA para ver cuánto han mejorado.';
     const table = `<div class="tw"><table class="cls"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>`;
     const tabs = race ? `<div class="rtabs"><button data-t="cls" class="on">Clasificación</button><button data-t="stats">Estadísticas</button></div>` : '';
-    const m = this.modal(`<header><span class="kicker">${race ? 'CARRERA' : SESSIONS[id].short}</span><h2>${title}</h2><button class="btn ghost" id="mLearn">Ver aprendizaje</button><button class="btn" id="mNext">${this.nextLabel(id)}</button></header>
+    const m = this.modal(`<header><span class="kicker">${race ? 'Carrera' : SESSIONS[id].short}</span><h2>${title}</h2><button class="btn ghost" id="mLearn">Ver aprendizaje</button><button class="btn" id="mNext">${this.nextLabel(id)}</button></header>
       <div class="body"><p class="lead">${lead}</p>${tabs}<div class="rpane" data-p="cls">${race && this.app.manager ? this.app.manager.summaryHTML(cls) : ''}${table}</div>${race ? `<div class="rpane hidden" data-p="stats">${this.raceStatsHTML(cls)}</div>` : ''}</div>`);
     m.querySelector('#mNext').onclick = () => { this.closeModal(); this.app.nextSession(); };
     m.querySelector('#mLearn').onclick = () => this.showLearning(true);
@@ -497,7 +521,7 @@ export class UI {
       card('Parada más rápida', stop ? `${who(stop.car)} ${stop.time.toFixed(1)} s` : '—', `${(L?.stops || []).length} paradas · ${ret} abandono${ret === 1 ? '' : 's'}`),
     ].join('');
     return `<div class="rs-cards">${cards}</div>
-      <div class="rs-box"><div class="rs-h">Posiciones vuelta a vuelta<span>pasa el ratón por un piloto para resaltarlo</span></div><canvas class="rs-chart" id="rsPos" width="1400" height="560"></canvas></div>
+      <div class="rs-box"><div class="rs-h">Posiciones vuelta a vuelta<span>pasa el ratón o toca un piloto para resaltarlo</span></div><canvas class="rs-chart" id="rsPos" width="1400" height="560"></canvas></div>
       <div class="rs-box"><div class="rs-h">Estrategias<span>tandas de neumáticos y vuelta de cada parada</span></div><div id="rsStrat"></div></div>
       <div class="rs-box"><div class="rs-h">Ritmo<span>tiempo de cada vuelta de los cinco primeros${this.dir.focus && cls.indexOf(this.dir.focus) > 4 ? ' y ' + this.dir.focus.code : ''} (sin la salida ni las paradas)</span></div><canvas class="rs-chart" id="rsPace" width="1400" height="420"></canvas></div>`;
   }
@@ -512,7 +536,7 @@ export class UI {
     const X = (lap) => l0 + (lap / Math.max(1, N)) * (W - l0 - r0), Y = (p) => t0 + ((p - 1) / (n - 1)) * (H - t0 - b0);
     let hl = null;
     const draw = () => {
-      g.clearRect(0, 0, W, H); g.font = '600 15px "Titillium Web", sans-serif'; g.fillStyle = '#6b7280';
+      g.clearRect(0, 0, W, H); g.font = '600 15px Figtree, sans-serif'; g.fillStyle = '#6b7280';
       for (let lap = 0; lap <= N; lap += Math.max(1, Math.round(N / 10))) { g.fillText(String(lap), X(lap) - 4, H - 10); g.strokeStyle = 'rgba(255,255,255,0.05)'; g.beginPath(); g.moveTo(X(lap), t0); g.lineTo(X(lap), H - b0); g.stroke(); }
       for (let p = 1; p <= n; p += p < 10 ? 1 : 2) g.fillText(String(p), 18, Y(p) + 5);
       const order = cls.slice().reverse();
@@ -523,14 +547,15 @@ export class UI {
         pts.forEach((p, k) => (k ? g.lineTo(X(k), Y(p)) : g.moveTo(X(0), Y(p)))); g.stroke();
         const end = pts[pts.length - 1], k = pts.length - 1;
         if (c.retired) { g.fillStyle = '#f87171'; g.fillText('✕', X(k) - 5, Y(end) + 5); }
-        g.globalAlpha = hl && c !== hl ? 0.3 : 1; g.fillStyle = colOf(c); g.font = `${big ? 800 : 600} 14px "Titillium Web", sans-serif`;
+        g.globalAlpha = hl && c !== hl ? 0.3 : 1; g.fillStyle = colOf(c); g.font = `${big ? 800 : 600} 14px Figtree, sans-serif`;
         if (!c.retired) g.fillText(c.code, W - r0 + 10, Y(cls.indexOf(c) + 1) + 5);
-        g.font = '600 15px "Titillium Web", sans-serif';
+        g.font = '600 15px Figtree, sans-serif';
       }
       g.globalAlpha = 1;
     };
     draw();
-    cv.onmousemove = (e) => {
+    // (pointer: también vale tocar en el móvil)
+    cv.onpointermove = cv.onpointerdown = (e) => {
       const r = cv.getBoundingClientRect(), y = ((e.clientY - r.top) / r.height) * H, x = ((e.clientX - r.left) / r.width) * W;
       const lap = Math.max(0, Math.min(N, Math.round(((x - l0) / (W - l0 - r0)) * N)));
       let best = null, bd = 1e9;
@@ -538,7 +563,7 @@ export class UI {
       if (x > W - r0) { const p = Math.round(((y - t0) / (H - t0 - b0)) * (n - 1)) + 1; best = cls[p - 1] || best; }
       if (best !== hl) { hl = bd < 30 || x > W - r0 ? best : null; draw(); }
     };
-    cv.onmouseleave = () => { hl = null; draw(); };
+    cv.onpointerleave = (e) => { if (e.pointerType === 'mouse') { hl = null; draw(); } };
     // estrategias: barra por piloto con sus tandas
     const strat = m.querySelector('#rsStrat');
     strat.innerHTML = cls.map((c) => {
@@ -555,12 +580,12 @@ export class UI {
     if (!ts.length) return;
     const lo = ts[0] - 0.3, hi = Math.min(ts[ts.length - 1], ts[Math.floor(ts.length * 0.9)] + 1.5);
     const PX = (lap) => 70 + (lap / Math.max(1, N)) * (PW - 90), PY = (t) => 14 + ((Math.min(hi, t) - lo) / (hi - lo)) * (PH - 48);
-    q.font = '600 15px "Titillium Web", sans-serif';
+    q.font = '600 15px Figtree, sans-serif';
     for (let k = 0; k <= 4; k++) { const t = lo + ((hi - lo) * k) / 4; q.fillStyle = '#6b7280'; q.fillText(fmtLap(t).slice(0, 8), 2, PY(t) + 5); q.strokeStyle = 'rgba(255,255,255,0.05)'; q.beginPath(); q.moveTo(70, PY(t)); q.lineTo(PW - 20, PY(t)); q.stroke(); }
     series.forEach((s, k) => {
       q.strokeStyle = colOf(s.c); q.lineWidth = s.c === this.dir.focus || mine.has(s.c) ? 3.5 : 2; q.beginPath();
       let prev = null; for (const p of s.pts) { if (prev && p.lap - prev.lap > 1) q.moveTo(PX(p.lap), PY(p.t)); else if (!prev) q.moveTo(PX(p.lap), PY(p.t)); else q.lineTo(PX(p.lap), PY(p.t)); prev = p; }
-      q.stroke(); q.fillStyle = colOf(s.c); q.font = '800 14px "Titillium Web", sans-serif'; q.fillText(s.c.code, 76 + k * 52, PH - 8);
+      q.stroke(); q.fillStyle = colOf(s.c); q.font = '800 14px Figtree, sans-serif'; q.fillText(s.c.code, 76 + k * 52, PH - 8);
     });
   }
 
@@ -692,7 +717,7 @@ export class UI {
       }
 
       return `<li class="learn-feed-item ${isMe ? 'me' : ''}">
-        <span class="learn-feed-time">${e.sess || 'FP'} ${m}:${sec}</span>
+        <span class="learn-feed-time">${({ FP: 'L1', FP2: 'L2', RACE: 'Carrera' })[e.sess || 'FP'] || e.sess} ${m}:${sec}</span>
         <span class="bar" style="background:${cAcc}"></span>
         <span class="learn-feed-tag ${tagClass}">${tagText}</span>
         <span class="learn-feed-desc">${desc}</span>
@@ -828,7 +853,7 @@ export class UI {
     const lo = 0.75, hi = 1.05;
     const Y = (v) => Tp + (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * (H - Tp - B);
 
-    g.font = '600 13px "Titillium Web", sans-serif';
+    g.font = '600 13px Figtree, sans-serif';
     g.fillStyle = '#8e92a4';
     g.strokeStyle = 'rgba(255,255,255,0.06)';
     g.lineWidth = 1;
@@ -852,7 +877,7 @@ export class UI {
     g.stroke();
     g.setLineDash([]);
     g.fillStyle = 'rgba(255, 255, 255, 0.45)';
-    g.font = '700 11.5px "Titillium Web", sans-serif';
+    g.font = '700 11.5px Figtree, sans-serif';
     g.fillText('100% (Límite nominal)', W - R - 130, y100 - 5);
 
     const dryColor = teamAccent(car.team);
@@ -891,7 +916,7 @@ export class UI {
 
       const cName = `T${z + 1}`;
       g.fillStyle = '#d9d9df';
-      g.font = '700 13px "Titillium Web", sans-serif';
+      g.font = '700 13px Figtree, sans-serif';
       g.textAlign = 'center';
       g.fillText(cName, x + bw / 2, H - B + 18);
 
@@ -899,7 +924,7 @@ export class UI {
       const isNamed = rawCorner && !/^Curva\s*\d+$/i.test(rawCorner) && !/^T\d+$/i.test(rawCorner);
       if (isNamed && n <= 14) {
         g.fillStyle = '#8e92a4';
-        g.font = '600 10px "Titillium Web", sans-serif';
+        g.font = '600 10px Figtree, sans-serif';
         const shortName = rawCorner.replace(/^Curva\s*/i, '').slice(0, 8);
         g.fillText(shortName, x + bw / 2, H - B + 32);
       }
@@ -913,7 +938,7 @@ export class UI {
     else g.fillRect(legX, legY, 12, 12);
     g.fill();
     g.fillStyle = '#d9d9df';
-    g.font = '700 13px "Titillium Web", sans-serif';
+    g.font = '700 13px Figtree, sans-serif';
     g.fillText('☀️ Seco', legX + 18, legY + 11);
 
     g.fillStyle = wetColor;
@@ -932,7 +957,7 @@ export class UI {
     g.clearRect(0, 0, W, H);
     const series = sim.cars.map((c) => ({ c, pts: (this.theoHist.get(c) || []).filter((h) => h.wet === wet) })).filter((s) => s.pts.length > 1);
     if (!series.length) {
-      g.fillStyle = '#6b7280'; g.font = '600 22px "Titillium Web", sans-serif'; g.textAlign = 'center';
+      g.fillStyle = '#6b7280'; g.font = '600 22px Figtree, sans-serif'; g.textAlign = 'center';
       g.fillText(wet ? 'Aún no se ha rodado en mojado.' : 'Aún no hay vueltas: deja rodar la sesión.', W / 2, H / 2);
       g.textAlign = 'left'; return;
     }
@@ -940,13 +965,13 @@ export class UI {
     const lo = Math.max(70, Math.floor(Math.min(...all.map((p) => p.pct)) - 1)), hi = Math.min(100, Math.ceil(Math.max(...all.map((p) => p.pct)) + 0.5));
     const L = 70, R = 30, Tp = 24, B = 40;
     const X = (x) => L + ((x - x0) / (x1 - x0)) * (W - L - R), Y = (v) => Tp + (1 - (v - lo) / Math.max(1, hi - lo)) * (H - Tp - B);
-    g.font = '600 15px "Titillium Web", sans-serif'; g.lineWidth = 1;
+    g.font = '600 15px Figtree, sans-serif'; g.lineWidth = 1;
     for (let k = 0; k <= 4; k++) {
       const v = lo + ((hi - lo) * k) / 4, y = Y(v);
       g.strokeStyle = 'rgba(255,255,255,0.06)'; g.beginPath(); g.moveTo(L, y); g.lineTo(W - R, y); g.stroke();
       g.fillStyle = '#8e92a4'; g.fillText(`${v.toFixed(v % 1 ? 1 : 0)} %`, 10, y + 5);
     }
-    g.fillStyle = '#6b7280'; g.font = '600 14px "Titillium Web", sans-serif';
+    g.fillStyle = '#6b7280'; g.font = '600 14px Figtree, sans-serif';
     g.fillText('tiempo en pista del fin de semana →', W - R - 230, H - 10);
     const line = (pts, col, w, alpha) => {
       g.globalAlpha = alpha; g.strokeStyle = col; g.lineWidth = w; g.beginPath();
@@ -958,7 +983,7 @@ export class UI {
       const col = f.team.c1 === '#141414' ? '#20E83B' : f.team.c1;
       line(fs.pts, '#000', 6, 0.5); line(fs.pts, col, 3.5, 1);
       const p = fs.pts[fs.pts.length - 1];
-      g.fillStyle = '#fff'; g.font = '800 17px "Titillium Web", sans-serif'; g.fillText(`${f.code} ${p.pct.toFixed(1)} %`, Math.min(X(p.x) + 8, W - 120), Y(p.pct) - 8);
+      g.fillStyle = '#fff'; g.font = '800 17px Figtree, sans-serif'; g.fillText(`${f.code} ${p.pct.toFixed(1)} %`, Math.min(X(p.x) + 8, W - 120), Y(p.pct) - 8);
     }
   }
 
@@ -988,10 +1013,10 @@ export class UI {
       g.fillStyle = '#161822';
       g.fillRect(0, 0, W, H);
       g.fillStyle = '#6b7280';
-      g.font = '600 22px "Titillium Web", sans-serif';
+      g.font = '600 22px Figtree, sans-serif';
       g.textAlign = 'center';
       g.fillText(wet ? '🌧️ Aún no hay vueltas cronometradas en mojado.' : '⏱️ Aún no hay vueltas limpias registradas.', W / 2, H / 2 - 10);
-      g.font = '400 16px "Titillium Web", sans-serif';
+      g.font = '400 16px Figtree, sans-serif';
       g.fillStyle = '#4b5563';
       g.fillText('Deja rodar la sesión para observar el progreso y evolución de los pilotos.', W / 2, H / 2 + 20);
       g.textAlign = 'left';
@@ -1012,7 +1037,7 @@ export class UI {
     g.strokeStyle = 'rgba(255,255,255,0.06)';
     g.lineWidth = 1;
     g.fillStyle = '#8e92a4';
-    g.font = '600 15px "Titillium Web", sans-serif';
+    g.font = '600 15px Figtree, sans-serif';
 
     const nGrids = 4;
     for (let k = 0; k <= nGrids; k++) {
@@ -1025,7 +1050,7 @@ export class UI {
       g.fillText(fmtLap(t).slice(0, 8), 10, y + 5);
     }
 
-    g.font = '600 14px "Titillium Web", sans-serif';
+    g.font = '600 14px Figtree, sans-serif';
     g.fillStyle = '#6b7280';
     for (let i = 0; i < maxLaps; i++) {
       const x = X(i);
@@ -1038,10 +1063,10 @@ export class UI {
       }
     }
 
-    g.font = '700 13px "Titillium Web", sans-serif';
+    g.font = '700 13px Figtree, sans-serif';
     g.fillStyle = '#8e92a4';
-    g.fillText('▲ MÁS RÁPIDO', 10, Tp - 10);
-    g.fillText('VUELTAS CRONOMETRADAS →', W - R - 130, H - 10);
+    g.fillText('▲ Más rápido', 10, Tp - 10);
+    g.fillText('Vueltas cronometradas →', W - R - 130, H - 10);
 
     const focusCar = this.dir.focus || sim.cars[0];
 
@@ -1080,7 +1105,7 @@ export class UI {
       const endX = X(lastIdx), endY = Y(focusSeries.pts[lastIdx]);
       const bestTimeStr = fmtLap(focusSeries.pts[lastIdx]).slice(0, 8);
       const badgeText = `${focusCar.code}  ${bestTimeStr}`;
-      g.font = '900 14px "Titillium Web", sans-serif';
+      g.font = '800 14px Figtree, sans-serif';
       const textW = g.measureText(badgeText).width;
 
       g.fillStyle = 'rgba(18, 18, 25, 0.9)';
@@ -1110,7 +1135,7 @@ export class UI {
       g.fillStyle = '#161822';
       g.fillRect(0, 0, W, H);
       g.fillStyle = '#6b7280';
-      g.font = '600 20px "Titillium Web", sans-serif';
+      g.font = '600 20px Figtree, sans-serif';
       g.textAlign = 'center';
       g.fillText('🌧️ Aún no hay datos de trazada en mojado.', W / 2, H / 2);
       g.textAlign = 'left';
@@ -1179,14 +1204,14 @@ export class UI {
 
     const cName = bz.corner?.name || `Curva ${bz.id + 1}`;
     g.fillStyle = '#FFFFFF';
-    g.font = '900 20px "Titillium Web", sans-serif';
+    g.font = '800 20px Figtree, sans-serif';
     g.fillText(cName, 16, 28);
 
     g.fillStyle = '#8e92a4';
-    g.font = '600 13px "Titillium Web", sans-serif';
+    g.font = '600 13px Figtree, sans-serif';
     g.fillText(`Desviación máx: ${(bd).toFixed(2)} m frente a la trazada óptima`, 16, 48);
 
-    g.font = '600 13px "Titillium Web", sans-serif';
+    g.font = '600 13px Figtree, sans-serif';
     g.fillStyle = '#8e92a4';
     g.fillText('--- Trazada ideal (goma) · ━━━ Trazada elegida por ' + car.code, 16, H - 12);
   }

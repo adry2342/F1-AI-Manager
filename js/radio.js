@@ -185,8 +185,8 @@ export class Radio {
     if (this.gap > 0 || !this.q.length) return;
     const m = this.cur = this.q.shift();
     const c = m.car, col = c.team.c1 === '#141414' ? c.team.c2 : c.team.c1;
-    el.innerHTML = `<div class="rh"><span class="bar" style="background:${col}"></span><b>${c.code}</b><span>RADIO · ${c.team.short}</span><i class="wave"><em></em><em></em><em></em><em></em></i></div>` +
-      m.lines.map(([w, t]) => `<p class="${w}"><span>${w === 'd' ? c.drv.last.toUpperCase() : 'INGENIERO'}</span>${t}</p>`).join('');
+    el.innerHTML = `<div class="rh"><span class="bar" style="background:${col}"></span><b>${c.code}</b><span>Radio · ${c.team.short}</span><i class="wave"><em></em><em></em><em></em><em></em></i></div>` +
+      m.lines.map(([w, t]) => `<p class="${w}"><span>${w === 'd' ? c.drv.last : 'Ingeniero'}</span>${t}</p>`).join('');
     // justo debajo de la torre de tiempos (su alto cambia con la sesión); en pantallas bajas, donde taparía la ficha
     // del piloto, a la derecha de la torre y a ras de su parte de abajo
     const tw = document.getElementById('tower')?.getBoundingClientRect(), cd = document.getElementById('card')?.getBoundingClientRect();

@@ -1,7 +1,17 @@
 # Pendiente
 
-## Esperan tu decisión (ver `propuestas/index.html`)
-- **Acento de Caelestia** (estilo elegido): lila, azul, menta, ámbar, sin color o color del equipo. Con el acento, aplico el rediseño a toda la interfaz.
+## Por dónde vamos (17/10)
+Hecho y probado (e2e 57/57 y 72/72):
+- Interfaz entera en Caelestia sin color (Figtree, vidrio, píldoras); colores de estado vivos (sectores, banderas, avisos, pedales).
+- Fuera la barra «Muro» en escritorio; «Pausa en avisos» en la cabecera de Avisos y en el menú (Esc).
+- Mánager: sus coches ya no paran solos con el plan; la parada del plan es un aviso y un botón amarillo.
+- Vertical (móvil de pie o pantalla dividida): 3D arriba y pestañas Muro / Tiempos / Piloto / Mapa + menú ☰; en ancho, tiempos fijos a la izquierda.
+- Banda de compuesto de las ruedas del coche más ancha y con brillo propio.
+
+Queda:
+- Mirar la foto de las ruedas (`scratchpad/tyres.jpg`) y decidir si basta.
+- Revisar en vertical: portada, pausa, multijugador (sala y votaciones), repetición y radio.
+- Que lo pruebe él en el móvil de verdad.
 
 ## Decidido (17/10)
 - Visibilidad C por defecto (D cuesta un 18 % de FPS en gp y se ve casi igual). `?look=a` vuelve a la de antes.

@@ -10,9 +10,9 @@ import { TeamSim } from './teamsim.js';
 
 const DRY = ['S', 'M', 'H'], TYRES = ['S', 'M', 'H', 'I', 'W'];
 const LEVERS = [
-  ['pace', 'RITMO', [['save', 'Cuidar'], ['normal', 'Normal'], ['push', 'Atacar']]],
-  ['ers', 'MOTOR', [['charge', 'Recargar'], ['normal', 'Normal'], ['boost', 'Ataque']]],
-  ['fight', 'PELEA', [['calm', 'Prudente'], ['normal', 'Normal'], ['hard', 'Agresivo']]],
+  ['pace', 'Ritmo', [['save', 'Cuidar'], ['normal', 'Normal'], ['push', 'Atacar']]],
+  ['ers', 'Motor', [['charge', 'Recargar'], ['normal', 'Normal'], ['boost', 'Ataque']]],
+  ['fight', 'Pelea', [['calm', 'Prudente'], ['normal', 'Normal'], ['hard', 'Agresivo']]],
 ];
 // lo que cuesta cada opción (medido solo en pista y sin aprender, media de 4 circuitos): [en el botón, debajo al elegirla]
 const COST = {
@@ -115,7 +115,7 @@ export class Manager {
       case 'mtoggle': this.el.classList.toggle('open'); break;   // (en el móvil el muro se pliega en su barra)
       case 'gclose': this.toggleGarage(false); break;
       case 'gtab': this.gTab = v; break;
-      case 'pauseAl': this.pauseOnAlert = !this.pauseOnAlert; break;
+      case 'pauseAl': this.pauseOnAlert = !this.pauseOnAlert; this.renderAlerts(); break;
       case 'pt': this.pt = v; break;
       case 'pw': this.pw = v; break;
       case 'stsel': this.stSel = +v; break;
@@ -231,17 +231,10 @@ export class Manager {
   stopToggle(car) {
     const M = car.mgr, sts = car.strategy?.stints; if (!sts || car.inPit) return;
     const st = sts[car.stint], due = car.stint < sts.length - 1 && car.lap + 1 >= st.to;
-    if (M.stopNow || due) {
-      const was = M.stopNow; M.stopNow = false;
-      // la del plan se retrasa dos vueltas (luego se puede mover en el garaje)
-      // (y las de después con ella: si no, la siguiente tanda se quedaba en 1 vuelta y paraba otra vez)
-      if (due && !was) {
-        const N = this.sim.raceLaps, d = Math.min(N - 1, car.lap + 3) - st.to;
-        for (let k = car.stint; k < sts.length - 1; k++) sts[k].to = Math.min(N - 1, sts[k].to + d);
-        for (let k = sts.length - 1; k > car.stint; k--) if ((k === sts.length - 1 ? N : sts[k].to) - sts[k - 1].to < 2) { sts[k - 1].to = sts[k].to; sts.splice(k, 1); }
-        this.fixPlan(car);
-      }
-      car.pitReq = false; this.note(car, due ? `Retrasa la parada a la V${st.to}` : 'Cancela la parada');
+    // (la parada del plan ya no es automática: el botón la pide o la cancela, como cualquier otra)
+    if (M.stopNow) {
+      M.stopNow = false;
+      car.pitReq = false; this.note(car, 'Cancela la parada');
       this.say(car, [['e', 'Cancela, cancela. Quédate fuera.'], ['d', 'Entendido.']], 3);
     } else {
       this.sim.mgrStopNow(car); car.pitReq = true;
@@ -455,13 +448,13 @@ export class Manager {
     }
     if (e.type === 'badlap' && mine) {
       const run = c.run || {};
-      this.alert(c, 'bad' + c.lap, e.why === 'tráfico' ? 'TRÁFICO' : 'VUELTA MALA', `${c.code}: lanzada ${e.why === 'tráfico' ? 'con tráfico' : 'con un error'}. No cuenta: la repite (${c.pushN || 0}/${run.laps} hechas).`,
+      this.alert(c, 'bad' + c.lap, e.why === 'tráfico' ? 'Tráfico' : 'Vuelta mala', `${c.code}: lanzada ${e.why === 'tráfico' ? 'con tráfico' : 'con un error'}. No cuenta: la repite (${c.pushN || 0}/${run.laps} hechas).`,
         [{ l: 'Repetir', reply: 'No vale, otra vuelta.' }, { l: 'Vale así', op: ['okLap', c.i], reply: 'Nos vale. Seguimos con el programa.' },
          { l: 'Enfriar antes', op: ['set', c.i, 'nextLap', 'cool'], reply: 'Vuelta tranquila y lo intentamos otra vez.' }], { ttl: 20, valid: () => c.state !== 'garage' });
       return;
     }
     if (!race) {
-      if (e.type === 'debris' && mine && e.broken && c.state !== 'garage') this.alert(c, 'dmg' + e.part, 'DAÑOS', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto.`, [{ l: 'Box ya', op: ['boxNow', c.i], reply: 'Vuelve a boxes con cuidado.' }, { l: 'Sigue' }]);
+      if (e.type === 'debris' && mine && e.broken && c.state !== 'garage') this.alert(c, 'dmg' + e.part, 'Daños', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto.`, [{ l: 'Box ya', op: ['boxNow', c.i], reply: 'Vuelve a boxes con cuidado.' }, { l: 'Sigue' }]);
       return;
     }
     // carrera
@@ -470,14 +463,14 @@ export class Manager {
         if (m.inPit || m.retired || m.finished || sim.raceLaps - m.lap < 3) continue;
         const { ah, bh } = this.around(m);
         if (!((c === ah && sim.gapTo(m, c) < 3) || (c === bh && sim.gapTo(c, m) < 3))) continue;
-        this.alert(m, 'rival' + c.code, c === bh ? 'UNDERCUT' : 'RIVAL EN BOXES', c === bh ? `${c.code} para detrás de ${m.code}. Puede salir delante con goma nueva.` : `${c.code} para delante de ${m.code}. Si paramos ya, intentamos el undercut.`,
+        this.alert(m, 'rival' + c.code, c === bh ? 'Undercut' : 'Rival en boxes', c === bh ? `${c.code} para detrás de ${m.code}. Puede salir delante con goma nueva.` : `${c.code} para delante de ${m.code}. Si paramos ya, intentamos el undercut.`,
           [this.stopAct(m, null, c === bh ? 'Cubrir: box ya' : 'Undercut: box ya'), { l: 'Overcut: atacar', op: ['set', m.i, 'pace', 'push'], reply: 'Nos quedamos fuera. Vueltas de clasificación: empuja.' }, { l: 'Ignorar' }], { valid: () => !m.inPit });
       }
       return;
     }
     if (!mine) return;
     if (e.type === 'debris' && e.broken && !c.inPit) {
-      this.alert(c, 'dmg' + e.part, 'DAÑOS', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto. En boxes se arregla (+${e.part === 'susp' ? 7 : 7} s).`,
+      this.alert(c, 'dmg' + e.part, 'Daños', `${c.code}: ${{ fw: 'alerón delantero', rw: 'alerón trasero', susp: 'suspensión' }[e.part]} roto. En boxes se arregla (+${e.part === 'susp' ? 7 : 7} s).`,
         [this.stopAct(c, null, 'Box: reparar'), { l: 'Seguir así', reply: 'Seguimos. Cuidado en las rápidas.' }], { ttl: 20, valid: () => !c.inPit });
       return;
     }
@@ -490,16 +483,21 @@ export class Manager {
     const gA = ah ? sim.gapTo(c, ah) : null, gB = bh && !bh.retired ? sim.gapTo(bh, c) : null, pA = c.mgA, pB = c.mgB; c.mgA = gA; c.mgB = gB;
     const sts = c.strategy.stints, st = sts[c.stint], stopSoon = c.stint < sts.length - 1 && st.to - c.lap <= 2;
     const slick = !COMPOUNDS[c.tyre.c].wet;
-    if (M.ers === 'boost' && c.ers <= 0.02) this.alert(c, 'bat', 'BATERÍA', `${c.code} sin batería: el modo ataque ya no da nada.`, [{ l: 'Recargar', op: ['set', c.i, 'ers', 'charge'] }, { l: 'Normal', op: ['set', c.i, 'ers', 'normal'] }]);
-    if (slick && W.line > 0.3 && left > 1) this.alert(c, 'wetslick', 'SIN AGARRE', 'No hay agarre con lisos.', [this.stopAct(c, W.line > 0.75 ? 'W' : 'I', `Box: ${W.line > 0.75 ? 'lluvia' : 'intermedios'}`), { l: 'Aguanta', reply: 'Aguanta una vuelta más.' }], { voice: [['d', pick(['No hay agarre, esto es una pista de hielo.', '¡No puedo con los lisos!'])]], valid: () => !c.inPit });
-    else if (!slick && W.line < 0.14 && W.target < 0.1 && left > 2) this.alert(c, 'dry', 'SE SECA', 'La trazada se seca: las gomas de agua se deshacen.', [this.stopAct(c, left < sim.raceLaps * 0.42 ? 'S' : 'M', `Box: ${left < sim.raceLaps * 0.42 ? 'blandos' : 'medios'}`), this.stopAct(c, 'H', 'Box: duros'), { l: 'Aguanta' }], { voice: [['d', 'La trazada está seca.']], valid: () => !c.inPit });
-    else if (c.tyre.wear > 0.62 && left > 2 && !stopSoon && !M.stopNow) this.alert(c, 'deg' + c.stint, 'GOMAS', `${c.code}: goma al ${Math.round((1 - c.tyre.wear) * 100)} %. Por encima del 72 % de desgaste se cae.`, [this.stopAct(c, null, 'Box ya'), { l: 'Cuidar gomas', op: ['set', c.i, 'pace', 'save'], reply: 'Gestiona: levanta y deja correr.' }, { l: 'Aguanta', reply: 'Aguanta, lo necesitamos.' }], { voice: [['d', pick(['Las gomas se acaban.', 'Pierdo mucho detrás.'])]], valid: () => !c.inPit });
-    else if (gB != null && pB != null && gB < 2 && pB - gB > 0.25 && left > 1 && bh.team !== c.team) this.alert(c, 'def', 'DEFENSA', `${bh.code} a ${nf(gB)} s de ${c.code}: le recupera ${nf(pB - gB)} por vuelta.`, [{ l: 'Atacar', op: ['set', c.i, 'pace', 'push'], reply: 'Todo lo que tengas, defiende la posición.' }, { l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque en el motor.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Cierra la puerta, no le dejes nada.' }]);
-    else if (gA != null && pA != null && gA < 2.5 && gA > 0.6 && pA - gA > 0.2 && left > 1 && ah.team !== c.team) this.alert(c, 'att', 'ATAQUE', `${c.code} a ${nf(gA)} s de ${ah.code} y recuperando ${nf(pA - gA)} por vuelta.`, [{ l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque: a por él.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Ve a por él en la frenada.' }, { l: 'Ignorar' }]);
+    // parada del plan: aviso (una vez por tanda); no entra si no se pide
+    if (c.stint < sts.length - 1 && c.lap + 1 >= st.to && !M.stopNow && left > 0) {
+      const nx = sts[c.stint + 1].c;
+      this.alert(c, 'plan' + c.stint, 'Plan', `${c.code}: el plan dice parar en esta vuelta (${COMPOUNDS[nx].name.toLowerCase()}). Goma al ${Math.round((1 - c.tyre.wear) * 100)} %.`, [this.stopAct(c, null, 'Box ya'), { l: 'Seguir fuera', reply: 'Nos quedamos fuera. Te avisamos.' }], { ttl: 20, valid: () => !c.inPit && !M.stopNow });
+    }
+    if (M.ers === 'boost' && c.ers <= 0.02) this.alert(c, 'bat', 'Batería', `${c.code} sin batería: el modo ataque ya no da nada.`, [{ l: 'Recargar', op: ['set', c.i, 'ers', 'charge'] }, { l: 'Normal', op: ['set', c.i, 'ers', 'normal'] }]);
+    if (slick && W.line > 0.3 && left > 1) this.alert(c, 'wetslick', 'Sin agarre', 'No hay agarre con lisos.', [this.stopAct(c, W.line > 0.75 ? 'W' : 'I', `Box: ${W.line > 0.75 ? 'lluvia' : 'intermedios'}`), { l: 'Aguanta', reply: 'Aguanta una vuelta más.' }], { voice: [['d', pick(['No hay agarre, esto es una pista de hielo.', '¡No puedo con los lisos!'])]], valid: () => !c.inPit });
+    else if (!slick && W.line < 0.14 && W.target < 0.1 && left > 2) this.alert(c, 'dry', 'Se seca', 'La trazada se seca: las gomas de agua se deshacen.', [this.stopAct(c, left < sim.raceLaps * 0.42 ? 'S' : 'M', `Box: ${left < sim.raceLaps * 0.42 ? 'blandos' : 'medios'}`), this.stopAct(c, 'H', 'Box: duros'), { l: 'Aguanta' }], { voice: [['d', 'La trazada está seca.']], valid: () => !c.inPit });
+    else if (c.tyre.wear > 0.62 && left > 2 && !stopSoon && !M.stopNow) this.alert(c, 'deg' + c.stint, 'Gomas', `${c.code}: goma al ${Math.round((1 - c.tyre.wear) * 100)} %. Por encima del 72 % de desgaste se cae.`, [this.stopAct(c, null, 'Box ya'), { l: 'Cuidar gomas', op: ['set', c.i, 'pace', 'save'], reply: 'Gestiona: levanta y deja correr.' }, { l: 'Aguanta', reply: 'Aguanta, lo necesitamos.' }], { voice: [['d', pick(['Las gomas se acaban.', 'Pierdo mucho detrás.'])]], valid: () => !c.inPit });
+    else if (gB != null && pB != null && gB < 2 && pB - gB > 0.25 && left > 1 && bh.team !== c.team) this.alert(c, 'def', 'Defensa', `${bh.code} a ${nf(gB)} s de ${c.code}: le recupera ${nf(pB - gB)} por vuelta.`, [{ l: 'Atacar', op: ['set', c.i, 'pace', 'push'], reply: 'Todo lo que tengas, defiende la posición.' }, { l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque en el motor.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Cierra la puerta, no le dejes nada.' }]);
+    else if (gA != null && pA != null && gA < 2.5 && gA > 0.6 && pA - gA > 0.2 && left > 1 && ah.team !== c.team) this.alert(c, 'att', 'Ataque', `${c.code} a ${nf(gA)} s de ${ah.code} y recuperando ${nf(pA - gA)} por vuelta.`, [{ l: 'Ataque ERS', op: ['set', c.i, 'ers', 'boost'], reply: 'Modo ataque: a por él.' }, { l: 'Pelea agresiva', op: ['set', c.i, 'fight', 'hard'], reply: 'Ve a por él en la frenada.' }, { l: 'Ignorar' }]);
     // compañero más rápido detrás
     const mate = this.cars.find((x) => x !== c);
     if (mate && bh === mate && gB != null && gB < 1.1 && !this.ord?.hold && mate.lastLap && c.lastLap && c.lastLap - mate.lastLap > 0.3 && left > 2)
-      this.alert(c, 'mate', 'EQUIPO', `${mate.code} va ${nf(c.lastLap - mate.lastLap)} s más rápido que ${c.code} y está a ${nf(gB)} s.`, [{ l: `Deja pasar a ${mate.code}`, op: ['order', c.i, 'swap'] }, { l: 'Mantener posiciones', op: ['order', c.i, 'hold'] }, { l: 'Que peleen' }]);
+      this.alert(c, 'mate', 'Equipo', `${mate.code} va ${nf(c.lastLap - mate.lastLap)} s más rápido que ${c.code} y está a ${nf(gB)} s.`, [{ l: `Deja pasar a ${mate.code}`, op: ['order', c.i, 'swap'] }, { l: 'Mantener posiciones', op: ['order', c.i, 'hold'] }, { l: 'Que peleen' }]);
   }
 
   // simulador del equipo: lo aprendido ya está en su cerebro; aquí se carga en el coche y se descuenta de lo pendiente
@@ -539,7 +537,7 @@ export class Manager {
       const cut = ss.cut, left = ss.dur - sim.t, cls = sim.classification();
       if (cut && left > 110 && left < 330) for (const m of this.cars) {
         const p = cls.indexOf(m) + 1;
-        if (!m.out && m.state === 'garage' && (p > cut - 2 || !isFinite(m.best))) this.alert(m, 'qcut' + ss.id, 'CORTE', `${m.code} P${p}${p > cut ? ', fuera del corte' : ', al límite del corte'} (P${cut}). Quedan ${Math.ceil(left / 60)} min.`,
+        if (!m.out && m.state === 'garage' && (p > cut - 2 || !isFinite(m.best))) this.alert(m, 'qcut' + ss.id, 'Corte', `${m.code} P${p}${p > cut ? ', fuera del corte' : ', al límite del corte'} (P${cut}). Quedan ${Math.ceil(left / 60)} min.`,
           [{ l: 'Salir: blandos nuevos', op: ['qout', m.i] }, { l: 'Quedarse' }], { ttl: 25, valid: () => m.state === 'garage' });
       }
     }
@@ -559,9 +557,11 @@ export class Manager {
       return `<button data-a="sel" data-v="${k}" class="tab ${k === this.sel ? 'on' : ''}"><span class="p">${this.posOf(c) ? 'P' + this.posOf(c) : '—'}</span><span class="bar" style="background:${c.team.c1}"></span><b>${c.code}</b>${tyre(c.tyre.c)}<span class="k">${w}%</span>${st ? `<em>${st}</em>` : ''}</button>`;
     }).join('');
     // (sin textos de ayuda: robaban sitio y los avisos se cortaban; la explicación de cada opción sale al pasar el ratón)
-    const html = `<div class="mt" data-a="mtoggle"><span>MURO</span><b>${esc(this.cars[0].team.name)}</b><button data-a="pauseAl" class="pa ${this.pauseOnAlert ? 'on' : ''}" title="Pausa la sesión cuando llega un aviso">${this.pauseOnAlert ? 'PAUSA EN AVISOS' : 'SIN PAUSA'}</button></div>
+    // (la barra «Muro» solo se ve en el móvil, donde pliega el panel; en escritorio robaba alto y no decía nada. La pausa con
+    // avisos está en la cabecera de los avisos y en el menú de Esc)
+    const html = `<div class="mt" data-a="mtoggle"><span>Muro</span><b>${esc(this.cars[0].team.name)}</b></div>
       <button data-a="garage" class="gbig ${this.gOpen ? 'on' : ''}" title="Estrategia · Reglaje · Rendimiento · Radar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5V20H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 20v-6h10v6M7 17h10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        <span><b>${this.gOpen ? 'CERRAR GARAJE' : 'GARAJE'}</b></span><kbd>G</kbd></button>
+        <span><b>${this.gOpen ? 'Cerrar garaje' : 'Garaje'}</b></span><kbd>G</kbd></button>
       ${this.onGrid() ? this.startBtn() : ''}
       <div class="tabs">${tabs}</div>${this.cardHTML(this.car)}${race ? this.ordersHTML() : ''}`;
     if (!this.mainEl) { this.mainEl = document.createElement('div'); this.mainEl.className = 'mgrMain'; this.el.append(this.mainEl); }
@@ -572,8 +572,8 @@ export class Manager {
   // en multijugador la salida espera a que todos los muros estén listos
   startBtn() {
     const n = this.app.managers?.length || 1, ready = this.sim.gridReady?.size || 0;
-    if (this.sim.gridReady?.has(this.teamId)) return `<button class="startBtn" disabled>LISTO · ESPERANDO A LOS DEMÁS (${ready}/${n})</button>`;
-    return `<button data-a="start" class="startBtn">${n > 1 ? `LISTO PARA LA SALIDA (${ready}/${n})` : 'DAR LA SALIDA'}</button>`;
+    if (this.sim.gridReady?.has(this.teamId)) return `<button class="startBtn" disabled>Listo · esperando a los demás (${ready}/${n})</button>`;
+    return `<button data-a="start" class="startBtn">${n > 1 ? `Listo para la salida (${ready}/${n})` : 'Dar la salida'}</button>`;
   }
   cardHTML(c) {
     const sim = this.sim, race = this.race(), M = c.mgr, wear = Math.round(c.tyre.wear * 100);
@@ -581,8 +581,8 @@ export class Manager {
     const ga = ah ? sim.gapTo(c, ah) : NaN, gb = bh && !bh.retired ? sim.gapTo(bh, c) : NaN;
     const last = c.laps?.length ? c.laps[c.laps.length - 1] : NaN;
     const job = this.jobs.get(c);
-    const state = c.retired ? 'ABANDONO' : c.out ? 'ELIMINADO' : c.state === 'garage' ? ( job ? `EN EL GARAJE · SIMULADOR ${job.done}/${job.target} VUELTAS` : 'EN EL GARAJE') : c.inPit ? (c.pitPhase === 'stop' ? 'PARADA' : c.pitPhase === 'in' ? 'ENTRANDO A BOXES' : 'SALIENDO DE BOXES')
-      : c.finished ? 'BANDERA A CUADROS' : race ? '' : { push: 'VUELTA RÁPIDA', out: 'VUELTA DE SALIDA', in: 'VUELTA DE ENTRADA', cool: 'ENFRIANDO' }[c.lapKind] || '';
+    const state = c.retired ? 'Abandono' : c.out ? 'Eliminado' : c.state === 'garage' ? ( job ? `En el garaje · simulador ${job.done}/${job.target} vueltas` : 'En el garaje') : c.inPit ? (c.pitPhase === 'stop' ? 'Parada' : c.pitPhase === 'in' ? 'Entrando a boxes' : 'Saliendo de boxes')
+      : c.finished ? 'Bandera a cuadros' : race ? '' : { push: 'Vuelta rápida', out: 'Vuelta de salida', in: 'Vuelta de entrada', cool: 'Enfriando' }[c.lapKind] || '';
     const levers = LEVERS.map(([k, label, opts]) => `<div class="lv"><div class="lt"><span>${label}</span>${k === 'ers' ? `<span class="bat" title="Batería"><i style="width:${Math.round(c.ers * 100)}%"></i></span>` : ''}</div>
       <div class="row seg">${opts.map(([v, l]) => `<button data-a="lev" data-k="${k}" data-v="${v}" data-i="${c.i}" class="${M[k] === v ? 'on' : ''} ${v}" title="${COST[k][v][1]}"><b>${l}</b><small>${COST[k][v][0]}</small></button>`).join('')}</div></div>`).join('');
     return `<div class="mc">
@@ -600,30 +600,31 @@ export class Manager {
     if (c.retired || c.out || c.finished || ss.done) return '';
     if (this.race()) {
       if (this.onGrid()) return '';
-      if (c.inPit) return '<div class="act"><button class="big" disabled>EN BOXES</button></div>';
+      if (c.inPit) return '<div class="act"><button class="big" disabled>En boxes</button></div>';
       const sts = c.strategy.stints, st = sts[c.stint], due = c.stint < sts.length - 1 && c.lap + 1 >= st.to, nx = sts[c.stint + 1]?.c || c.tyre.c;
       const nextStop = c.stint < sts.length - 1 ? `Plan: parada en la V${st.to} → ${nx}` : 'Plan: sin más paradas';
-      if (M.stopNow || due) return `<div class="act"><button data-a="stop" data-i="${c.i}" class="big on">BOX ESTA VUELTA ${tyre(nx)}<small>${M.stopNow ? 'pedida por ti · pulsa para cancelar' : 'la del plan · pulsa para retrasarla 2 vueltas'}</small></button></div>`;
-      return `<div class="act"><button data-a="stop" data-i="${c.i}" class="big">PARAR EN ESTA VUELTA ${tyre(nx)}<small>${nextStop}</small></button></div>`;
+      if (M.stopNow) return `<div class="act"><button data-a="stop" data-i="${c.i}" class="big on">Box esta vuelta ${tyre(nx)}<small>pedida por ti · pulsa para cancelar</small></button></div>`;
+      if (due) return `<div class="act"><button data-a="stop" data-i="${c.i}" class="big due">Parar en esta vuelta ${tyre(nx)}<small>${c.lap + 1 > st.to ? `el plan decía V${st.to}` : 'toca según el plan'} · solo para si lo pides</small></button></div>`;
+      return `<div class="act"><button data-a="stop" data-i="${c.i}" class="big">Parar en esta vuelta ${tyre(nx)}<small>${nextStop}</small></button></div>`;
     }
     if (ss.phase !== 'run' && c.state === 'garage') return '';
     if (c.state === 'garage') {
       const p = prog(M.next);
-      return `<div class="act"><button data-a="go" data-i="${c.i}" class="big go">SALIR A PISTA ${tyre(M.next.c)}<small>${M.next.fresh ? 'juego nuevo' : 'juego usado'} · ${p.l.toLowerCase()}${M.next.test && isFP(ss.id) ? ' · modo consistente' : ''} · cámbialo en el garaje</small></button></div>`;
+      return `<div class="act"><button data-a="go" data-i="${c.i}" class="big go">Salir a pista ${tyre(M.next.c)}<small>${M.next.fresh ? 'juego nuevo' : 'juego usado'} · ${p.l.toLowerCase()}${M.next.test && isFP(ss.id) ? ' · modo consistente' : ''} · cámbialo en el garaje</small></button></div>`;
     }
     if (c.inPit) return '';
     const back = M.boxReq || c.lapKind === 'in';
     const nextK = M.nextLap || (c.lapKind === 'push' && c.run?.kind === 'quali' && c.run?.cool !== false ? 'cool' : 'push');
-    const nextRow = back || c.lapKind === 'in' ? '' : `<div class="lv"><div class="lt"><span>SIGUIENTE VUELTA</span></div><div class="row seg">${[['push', 'Lanzada'], ['cool', 'Enfriar']].map(([v, l]) => `<button data-a="nextlap" data-v="${v}" data-i="${c.i}" class="${nextK === v ? 'on' : ''}"><b>${l}</b></button>`).join('')}</div></div>`;
+    const nextRow = back || c.lapKind === 'in' ? '' : `<div class="lv"><div class="lt"><span>Siguiente vuelta</span></div><div class="row seg">${[['push', 'Lanzada'], ['cool', 'Enfriar']].map(([v, l]) => `<button data-a="nextlap" data-v="${v}" data-i="${c.i}" class="${nextK === v ? 'on' : ''}"><b>${l}</b></button>`).join('')}</div></div>`;
     const progTxt = (c.run?.laps ? `lanzadas ${c.pushN || 0}/${c.run.laps}` : `${c.pushN || 0} vueltas`) + (c.testRun ? ' · modo consistente' : '');
-    return nextRow + `<div class="act"><button data-a="box" data-i="${c.i}" class="big ${back ? 'on' : ''}">${back ? 'VUELVE A BOXES' : 'BOX ESTA VUELTA'}<small>${back ? (M.boxReq ? 'pulsa para cancelar' : 'fin del programa') : progTxt}</small></button></div>`;
+    return nextRow + `<div class="act"><button data-a="box" data-i="${c.i}" class="big ${back ? 'on' : ''}">${back ? 'Vuelve a boxes' : 'Box esta vuelta'}<small>${back ? (M.boxReq ? 'pulsa para cancelar' : 'fin del programa') : progTxt}</small></button></div>`;
   }
 
   ordersHTML() {
     const [a, b] = this.cars; if (!b || a.retired || b.retired || a.finished || b.finished) return '';
     const o = this.sim.raceOrder || [], lead = o.indexOf(a) < o.indexOf(b) ? a : b, trail = lead === a ? b : a, O = this.ord || {};
     const cur = O.yield ? 'swap' : O.hold ? 'hold' : 'free';
-    return `<div class="ord"><span>ÓRDENES</span><div class="row seg">${[['free', 'Libres'], ['hold', 'Mantener'], ['swap', `${lead.code} deja pasar`]].map(([v, l]) => `<button data-a="order" data-v="${v}" class="${cur === v ? 'on' : ''}" ${v === 'swap' && cur === 'swap' ? 'disabled' : ''}><b>${l}</b></button>`).join('')}</div>
+    return `<div class="ord"><span>Órdenes</span><div class="row seg">${[['free', 'Libres'], ['hold', 'Mantener'], ['swap', `${lead.code} deja pasar`]].map(([v, l]) => `<button data-a="order" data-v="${v}" class="${cur === v ? 'on' : ''}" ${v === 'swap' && cur === 'swap' ? 'disabled' : ''}><b>${l}</b></button>`).join('')}</div>
       ${cur === 'swap' ? `<div class="lc">${lead.code} se aparta en recta cuando ${trail.code} llegue.</div>` : ''}</div>`;
   }
 
@@ -632,7 +633,8 @@ export class Manager {
   renderAlerts() {
     // arriba del muro y solo cuando hay alguno (así caben enteros, aunque sean varios)
     const box = this.alEl, now = performance.now();
-    if (!box.querySelector('.alh')) box.insertAdjacentHTML('afterbegin', '<div class="alh"><span>AVISOS</span></div>');
+    if (!box.querySelector('.alh')) box.insertAdjacentHTML('afterbegin', '<div class="alh"><span>Avisos</span><button data-a="pauseAl" title="Pausa la sesión cuando llega un aviso"></button></div>');
+    const pb = box.querySelector('.alh button'); pb.classList.toggle('on', this.pauseOnAlert); pb.textContent = this.pauseOnAlert ? 'Pausa en avisos' : 'Sin pausa';
     const ids = new Set(this.alerts.map((a) => String(a.id)));
     for (const n of box.querySelectorAll('.al')) if (!ids.has(n.dataset.id)) n.remove();
     box.classList.toggle('hidden', !this.alerts.length);
@@ -657,7 +659,7 @@ export class Manager {
     if (!this.gOpen) return;
     const c = this.car, T = [['strat', 'Estrategia'], ['setup', 'Reglaje'], ['perf', 'Rendimiento'], ['radar', 'Radar']];
     const body = this.gTab === 'strat' ? this.stratHTML(c) : this.gTab === 'setup' ? this.setupHTML(c) : this.gTab === 'perf' ? this.perfHTML() : this.radar(true);
-    const html = `<div class="gh"><b>GARAJE</b><div class="gt">${T.map(([v, l]) => `<button data-a="gtab" data-v="${v}" class="${this.gTab === v ? 'on' : ''}">${l}</button>`).join('')}</div>
+    const html = `<div class="gh"><b>Garaje</b><div class="gt">${T.map(([v, l]) => `<button data-a="gtab" data-v="${v}" class="${this.gTab === v ? 'on' : ''}">${l}</button>`).join('')}</div>
       <div class="gd">${this.gTab === 'perf' ? '' : this.cars.map((x, k) => `<button data-a="sel" data-v="${k}" class="${k === this.sel ? 'on' : ''}"><span class="bar" style="background:${x.team.c1}"></span>${x.code}</button>`).join('')}</div>
       <button data-a="gclose" class="x" title="Cerrar (Esc)">✕</button></div><div class="gb">${body}</div>`;
     if (force || html !== this.gHTML) { this.gHTML = html; this.gel.innerHTML = html; }
@@ -698,7 +700,7 @@ export class Manager {
       if (ed) svg += `<g data-a="stdrag" data-v="${k}" class="hd"><rect x="${x - 14}" y="${yT + yH - 4}" width="28" height="22" rx="6"/><text x="${x}" y="${yT + yH + 11}" text-anchor="middle">V${s.to}</text></g>`;
       else svg += `<text x="${x}" y="${yT + yH + 11}" text-anchor="middle" class="ax">V${s.to}</text>`;
     });
-    if (now != null) svg += `<line x1="${X(Math.max(0, now))}" x2="${X(Math.max(0, now))}" y1="2" y2="${yT + yH}" class="now"/><text x="${X(Math.max(0, now)) + 4}" y="${yT + 10}" class="nowt">AHORA</text>`;
+    if (now != null) svg += `<line x1="${X(Math.max(0, now))}" x2="${X(Math.max(0, now))}" y1="2" y2="${yT + yH}" class="now"/><text x="${X(Math.max(0, now)) + 4}" y="${yT + 10}" class="nowt">Ahora</text>`;
     svg += '</svg>';
     // controles
     const k = this.stSel != null && st[this.stSel] ? this.stSel : null;
@@ -720,7 +722,7 @@ export class Manager {
       ${!wetRace && dryUsed.size < 2 ? '<span class="bad">Regla: en seco hay que usar dos compuestos distintos</span>' : ''}
     </div>`;
     const title = P.live ? (this.onGrid() ? `Plan de carrera de ${c.drv.last} · antes de la salida` : `Plan de carrera de ${c.drv.last} · vuelta ${Math.max(0, c.lap)}/${N}`) : `Borrador del plan de carrera de ${c.drv.last} · ${N} vueltas`;
-    const note = P.live ? (this.onGrid() ? 'Arrastra las paradas (V…) para moverlas. La goma de la primera tanda es con la que sale.' : 'Arrastra las paradas para moverlas: el coche para cuando lo diga el plan. Línea continua: desgaste real; discontinua: previsto.')
+    const note = P.live ? (this.onGrid() ? 'Arrastra las paradas (V…) para moverlas. La goma de la primera tanda es con la que sale.' : 'Arrastra las paradas para moverlas: el plan te avisa de cada parada, pero el coche solo entra cuando lo pides. Línea continua: desgaste real; discontinua: previsto.')
       : 'Se usará en la carrera. El desgaste previsto sale de las vueltas que haga tu equipo (pestaña Rendimiento).';
     return `<div class="gtitle"><b>${title}</b><span>${note}</span></div>${svg}${info}${ctl}${this.onGrid() ? this.startBtn() : ''}`;
   }
@@ -752,7 +754,7 @@ export class Manager {
         ${M.owed || M.simLaps ? `<div class="simrow"><p class="leg">Simulador del equipo: ${M.owed ? `<b>${M.owed} vueltas de aprendizaje pendientes</b> de las tandas en modo consistente. Se aplican al salir en modo «Aprende», al acabar la sesión o ahora. Mientras sigas en modo consistente, todas las tandas se comparan con el mismo piloto.` : 'al día.'} ${M.simLaps} vueltas hechas en total.</p>${M.owed ? `<button data-a="simnow" data-i="${c.i}" class="btn ghost">Aplicar ahora</button>` : ''}</div>` : ''}
         ${isFP(sim.session?.id) ? `<div class="sset"><div class="sh"><b>Piloto</b><span>${M.next.test ? 'Modo consistente: conduce igual todas las vueltas (no prueba nada en pista). Las vueltas con tráfico quedan marcadas y no cuentan. Lo que no aprende en pista lo recupera luego en el simulador del equipo. Con pelea agresiva no cede y se quita a los lentos.' : 'Aprende: prueba trazadas y frenadas en pista (mejora, pero sus vueltas varían).'}</span></div>
           <div class="row seg"><button data-a="ntest" data-v="0" data-i="${c.i}" class="${M.next.test ? '' : 'on'}"><b>Aprende</b><small>mejora cada vuelta</small></button><button data-a="ntest" data-v="1" data-i="${c.i}" class="${M.next.test ? 'on' : ''}"><b>Modo consistente</b><small>vueltas iguales</small></button></div></div>` : ''}
-        <button data-a="go" data-i="${c.i}" class="startBtn" ${can ? '' : 'disabled'}>${c.state === 'garage' ? 'SALIR A PISTA' : 'EN PISTA'}</button>`;
+        <button data-a="go" data-i="${c.i}" class="startBtn" ${can ? '' : 'disabled'}>${c.state === 'garage' ? 'Salir a pista' : 'En pista'}</button>`;
     } else if (this.onGrid()) html += this.startBtn();
     return html;
   }
@@ -851,7 +853,7 @@ export class Manager {
         <div class="crow axis"><div class="cl"></div><div class="ct">${ticks.join('')}</div><div class="cd"></div></div>
         ${rows.map((r, i) => `<div class="crow ${i === 0 ? 'best' : ''}"><div class="cl"><b>${r.n}</b><small>${r.cnt} ${r.cnt === 1 ? 'vuelta' : 'vueltas'}${isFinite(r.wear) ? ` · desgaste ${nf(r.wear * 100)} %/v` : ''}</small></div>
           <div class="ct">${r.v.map((l) => `<i class="dot" style="left:${X(l.tf)}%" title="${l.s} V${l.lap} · ${fmt(l.tf)}"></i>`).join('')}<i class="avg" style="left:${X(r.top)}%" title="Media de sus 3 mejores: ${fmt(r.top)}"></i></div>
-          <div class="cd">${i === 0 ? '<b>MEJOR</b>' : `+${nf(r.top - ref, 2)} s`}<small>${fmt(r.top)}</small></div></div>`).join('')}
+          <div class="cd">${i === 0 ? '<b>Mejor</b>' : `+${nf(r.top - ref, 2)} s`}<small>${fmt(r.top)}</small></div></div>`).join('')}
       </div>`;
     }
     return html + '<p class="leg">Cada punto es una vuelta (corregida por gasolina y por la goma de la pista); la marca grande es la media de sus 3 mejores, que es lo que se compara. Si el piloto aprende entre tandas, mejora solo: para comparar de verdad, tandas en modo consistente.</p>';

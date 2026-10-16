@@ -135,11 +135,11 @@ function mats(team, drv) {
     num: new THREE.MeshBasicMaterial({ map: TX.numberTex(drv.num, '#ffffff'), transparent: true, depthWrite: false }),
   };
   m.tyre = {};
-  for (const c of 'SMHIW') m.tyre[c] = new THREE.MeshStandardMaterial({ map: TX.tyreSide(COMPOUNDS[c].color), metalness: 0, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1 });
+  for (const c of 'SMHIW') m.tyre[c] = new THREE.MeshStandardMaterial({ map: TX.tyreSide(COMPOUNDS[c].color), emissiveMap: TX.tyreSide(COMPOUNDS[c].color), emissive: 0xffffff, emissiveIntensity: 0.35, metalness: 0, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1 });
   m.tyreFast = {};
-  for (const c of 'SMHIW') m.tyreFast[c] = new THREE.MeshStandardMaterial({ map: TX.tyreSide(COMPOUNDS[c].color, true), metalness: 0, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1 });
+  for (const c of 'SMHIW') m.tyreFast[c] = new THREE.MeshStandardMaterial({ map: TX.tyreSide(COMPOUNDS[c].color, true), emissiveMap: TX.tyreSide(COMPOUNDS[c].color, true), emissive: 0xffffff, emissiveIntensity: 0.35, metalness: 0, roughness: 0.85, polygonOffset: true, polygonOffsetFactor: -1 });
   m.lowTyre = {};
-  for (const c of 'SMHIW') m.lowTyre[c] = new THREE.MeshStandardMaterial({ color: 0x16171a, roughness: 0.9, emissive: new THREE.Color(COMPOUNDS[c].color), emissiveIntensity: 0.08 });
+  for (const c of 'SMHIW') m.lowTyre[c] = new THREE.MeshStandardMaterial({ color: 0x16171a, roughness: 0.9, emissive: new THREE.Color(COMPOUNDS[c].color), emissiveIntensity: 0.25 });
   matCache.set(key, m);
   return m;
 }

@@ -124,7 +124,7 @@ export class Replay {
 
   drawBar() {
     const c = this.car;
-    this.bar.innerHTML = `<span class="tag">REPETICIÓN</span><span class="who"><i style="background:${c.team.c1}"></i>${c.drv.last.toUpperCase()}</span>
+    this.bar.innerHTML = `<span class="tag">Repetición</span><span class="who"><i style="background:${c.team.c1}"></i>${c.drv.last.toUpperCase()}</span>
       <span class="prog"><i></i></span><button data-a="slow">${this.rate === 1 ? 'Cámara lenta' : 'Velocidad normal'}</button><button data-a="live">Volver al directo</button>`;
   }
 

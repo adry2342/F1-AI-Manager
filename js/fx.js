@@ -753,7 +753,7 @@ export function buildFx(scene, T, sim, visuals, world) {
     }
     const simDt = dt * speedMult;
 
-    const vH = window.innerHeight || 800;
+    const vH = document.getElementById('view')?.clientHeight || window.innerHeight || 800;
     const uScaleVal = vH * 0.866;
     smkUniforms.uScale.value = uScaleVal;
     spkUniforms.uScale.value = uScaleVal;

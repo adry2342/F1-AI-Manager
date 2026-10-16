@@ -477,20 +477,20 @@ export function tyreSide(color, blur = false) {
     g.beginPath(); g.arc(256, 256, 245, 0, Math.PI * 2); g.stroke();
 
     // Banda de compuesto principal (vibrante)
-    g.strokeStyle = color; g.lineWidth = 14;
+    g.strokeStyle = color; g.lineWidth = 22;
     g.beginPath(); g.arc(256, 256, 222, 0, Math.PI * 2); g.stroke();
 
     // Filetes de acento interior y exterior de la banda
     g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 2;
-    g.beginPath(); g.arc(256, 256, 229, 0, Math.PI * 2); g.stroke();
-    g.beginPath(); g.arc(256, 256, 215, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(256, 256, 233, 0, Math.PI * 2); g.stroke();
+    g.beginPath(); g.arc(256, 256, 211, 0, Math.PI * 2); g.stroke();
 
     // Anillo interior de unión con la llanta
     g.strokeStyle = '#22252b'; g.lineWidth = 6;
     g.beginPath(); g.arc(256, 256, 175, 0, Math.PI * 2); g.stroke();
 
     if (blur) {
-      g.strokeStyle = 'rgba(240,240,240,0.35)'; g.lineWidth = 20;
+      g.strokeStyle = 'rgba(240,240,240,0.16)'; g.lineWidth = 26;
       g.beginPath(); g.arc(256, 256, 222, 0, Math.PI * 2); g.stroke();
     } else {
       g.fillStyle = '#f5f5f7'; g.font = '900 24px "Titillium Web", Arial, sans-serif';

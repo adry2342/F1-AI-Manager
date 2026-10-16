@@ -28,19 +28,27 @@ const frame = () => new Promise((r) => { requestAnimationFrame(() => r()); setTi
 const params = new URLSearchParams(location.search);
 const DEFAULT_SPEED = { FP: 1, FP2: 1, Q1: 1, Q2: 1, Q3: 1, RACE: 1 };
 
+// vertical (móvil de pie o pantalla dividida): el 3D arriba y la interfaz debajo, en pestañas (ver body.portrait en el CSS)
+{
+  const mq = matchMedia('(max-aspect-ratio: 1/1)');
+  const set = () => { document.body.classList.toggle('portrait', mq.matches); window.dispatchEvent(new Event('portrait')); };
+  set(); mq.addEventListener('change', set);
+}
+
 async function main(choice) {
   const quality = choice.quality, trackId = choice.track;
   try { for (const k of Object.keys(localStorage)) if (k.startsWith('ngp-brains')) localStorage.removeItem(k); } catch { /* sin almacenamiento */ }
   const canvas = document.getElementById('view');
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, quality === 'low' ? 0.85 : 1.25));
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  // (el tamaño sale del propio lienzo: en vertical solo ocupa la parte de arriba, ver body.portrait)
+  renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, false);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = CIRCUITS[trackId].night ? 1.05 : CIRCUITS[trackId].sunset ? 0.95 : CIRCUITS[trackId].autumn ? 0.9 : 0.82;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   TX.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
   const scene = new THREE.Scene();
-  const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.08, 14000);
+  const camera = new THREE.PerspectiveCamera(60, (canvas.clientWidth || window.innerWidth) / (canvas.clientHeight || window.innerHeight), 0.08, 14000);
 
   msg('Trazando el circuito…'); await frame();
   const T = buildTrack(trackId);
@@ -196,7 +204,8 @@ async function main(choice) {
   }
 
   // --- bucle
-  window.addEventListener('resize', () => { renderer.setSize(window.innerWidth, window.innerHeight); camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); });
+  const fit = () => { const w = canvas.clientWidth || window.innerWidth, h = canvas.clientHeight || window.innerHeight; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+  window.addEventListener('resize', fit); window.addEventListener('portrait', fit);
   let last = performance.now(), acc = 0, skipFrame = 0;
   const focusPos = new THREE.Vector3();
   let lastFrame = performance.now();
@@ -329,7 +338,7 @@ async function startScreen() {
   const intro = document.createElement('div'); intro.className = 'modal'; document.body.appendChild(intro);
   intro.innerHTML = `<div class="sheet"><div class="start">
       <div class="st-l">
-        <div class="logo">F1 AI <i>MANAGER</i></div>
+        <div class="logo">F1 AI <i>Manager</i></div>
         <p class="tag">Veintidós pilotos con IA que aprenden dando vueltas. Buscan la trazada en libres, la exprimen en clasificación y pelean en carrera. Cada fin de semana empiezan de cero.</p>
         <h3>Circuito</h3>
         <div class="tcards">${Object.values(CIRCUITS).map(trackCard).join('')}</div>

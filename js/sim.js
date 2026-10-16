@@ -62,12 +62,12 @@ export const MGR = {
 
 export const isFP = (id) => id === 'FP' || id === 'FP2';
 export const SESSIONS = {
-  FP: { label: 'ENTRENAMIENTOS 1', short: 'FP', dur: 60 * 60 },
-  FP2: { label: 'ENTRENAMIENTOS 2', short: 'FP2', dur: 60 * 60 },
-  Q1: { label: 'CLASIFICACIÓN · Q1', short: 'Q1', dur: 12 * 60, cut: 16 },
-  Q2: { label: 'CLASIFICACIÓN · Q2', short: 'Q2', dur: 10 * 60, cut: 10 },
-  Q3: { label: 'CLASIFICACIÓN · Q3', short: 'Q3', dur: 9 * 60, cut: 0 },
-  RACE: { label: 'CARRERA', short: 'RACE', dur: 0 },
+  FP: { label: 'Entrenamientos 1', short: 'FP', dur: 60 * 60 },
+  FP2: { label: 'Entrenamientos 2', short: 'FP2', dur: 60 * 60 },
+  Q1: { label: 'Clasificación · Q1', short: 'Q1', dur: 12 * 60, cut: 16 },
+  Q2: { label: 'Clasificación · Q2', short: 'Q2', dur: 10 * 60, cut: 10 },
+  Q3: { label: 'Clasificación · Q3', short: 'Q3', dur: 9 * 60, cut: 0 },
+  RACE: { label: 'Carrera', short: 'RACE', dur: 0 },
 };
 
 const T0 = (s, L) => s / L;
@@ -1684,8 +1684,9 @@ export class Sim {
   mgrPit(car) {
     const M = car.mgr; if (car.inPit || car.finished || car.retired) return;
     const left = this.raceLaps - car.lap, sts = car.strategy.stints, st = sts[car.stint];
-    const due = !!st && car.stint < sts.length - 1 && car.lap + 1 >= st.to;
-    car.pitReq = left > 0 && (M.stopNow || due);
+    // solo para cuando lo pide el mánager: la parada del plan es un aviso, no una orden (le molestaba que sus coches
+    // entrasen solos con el plan sugerido o con las gomas gastadas)
+    car.pitReq = left > 0 && !!M.stopNow && !!st;
   }
   // «para en esta vuelta»: la tanda actual acaba aquí y la siguiente empieza ya (con su goma, o con la que se pida)
   mgrStopNow(car, c) {

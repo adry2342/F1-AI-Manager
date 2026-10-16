@@ -166,7 +166,7 @@ export function lobby(ui, { role, name, addr, retry }) {
         : tun.state === 'downloading' ? `<span>Descargando el conector de Cloudflare (solo la primera vez)…${pct}</span>`
           : tun.state === 'starting' ? '<span>Creando el enlace…</span>'
             : `${tun.err ? `<span class="bad">${esc(tun.err)}</span>` : ''}<button class="btn mpTun">Crear enlace para jugar por Internet</button>`;
-      return `<div class="mpNet"><div><span class="k">MISMA RED (CASA)</span>${lan}</div><div><span class="k">POR INTERNET · sin abrir puertos</span>${online}</div>
+      return `<div class="mpNet"><div><span class="k">Misma red (casa)</span>${lan}</div><div><span class="k">Por internet · sin abrir puertos</span>${online}</div>
         <p class="hint">Tus amigos abren la dirección en Chrome o Edge (no instalan nada), o ejecutan el juego y pulsan «Unirse» con ella.</p></div>`;
     }
     function render() {
@@ -176,7 +176,7 @@ export function lobby(ui, { role, name, addr, retry }) {
       const allReady = state.players.length > 0 && state.players.every((p) => p.ready || p.id === 0);
       root.innerHTML = `<h3>${host ? 'Tu sala' : 'Sala de ' + esc(state.players.find((p) => p.id === 0)?.name || 'anfitrión')}</h3>
         ${host ? netHTML() : `<p class="hint mpAddr">${tr ? esc(tr.name) : '—'} · ${WX_N[s.weather] || '—'} · ${s.raceLaps || '—'} vueltas de carrera</p>`}
-        <div class="mpList">${state.players.map((p) => { const t = teamOf(p.team); return `<div class="mpP ${p.id === myId ? 'me' : ''}"><i style="background:${t ? t.c1 : '#555'}"></i><b>${esc(p.name)}${p.id === 0 ? ' <small>anfitrión</small>' : ''}${p.id === myId ? ' <small>tú</small>' : ''}</b><span>${t ? esc(t.name) : 'Espectador'}</span><em class="${p.ready || p.id === 0 ? 'ok' : ''}">${p.id === 0 ? '' : p.ready ? 'LISTO' : 'eligiendo'}</em></div>`; }).join('')}</div>
+        <div class="mpList">${state.players.map((p) => { const t = teamOf(p.team); return `<div class="mpP ${p.id === myId ? 'me' : ''}"><i style="background:${t ? t.c1 : '#555'}"></i><b>${esc(p.name)}${p.id === 0 ? ' <small>anfitrión</small>' : ''}${p.id === myId ? ' <small>tú</small>' : ''}</b><span>${t ? esc(t.name) : 'Espectador'}</span><em class="${p.ready || p.id === 0 ? 'ok' : ''}">${p.id === 0 ? '' : p.ready ? 'Listo' : 'eligiendo'}</em></div>`; }).join('')}</div>
         <h3>Tu equipo</h3>
         <div class="teams mpTeams">${TEAMS.map((t) => { const o = taken.get(t.id), mine = o && o.id === myId; return `<button data-team="${t.id}" class="${mine ? 'on' : ''}" ${o && !mine ? 'disabled' : ''} title="${esc(t.name)}${o && !mine ? ' · ' + esc(o.name) : ''}"><i style="background:${t.c1}"></i><i style="background:${t.c2}"></i><span>${o && !mine ? esc(o.name) : t.short}</span></button>`; }).join('')}<button data-team="" class="${myTeam ? '' : 'on'}"><span>Espectador</span></button></div>
         ${host ? `<h3>Tiempo</h3>${seg('mpWx', Object.entries(WX_N), s.weather)}<h3>Vueltas de carrera</h3>${seg('mpLaps', [10, 15, 20, 30].map((l) => [l, l]), s.raceLaps)}` : ''}
@@ -557,7 +557,7 @@ export class MP {
     if (this.leaving || this.lostConn) return;
     this.lostConn = true; this.app.setSpeed(0);
     const d = document.createElement('div'); d.className = 'modal mpLost';
-    d.innerHTML = `<div class="sheet pauseSheet"><div class="pause"><div class="ph"><span class="kicker">MULTIJUGADOR</span><b>Conexión perdida</b><span>${esc(text)}</span></div>
+    d.innerHTML = `<div class="sheet pauseSheet"><div class="pause"><div class="ph"><span class="kicker">Multijugador</span><b>Conexión perdida</b><span>${esc(text)}</span></div>
       ${this.host ? '' : '<button class="btn big" id="mpRe">Reconectar (recuperas tu equipo)</button>'}
       <button class="btn ${this.host ? 'big' : 'ghost'}" id="mpReload">Volver al menú</button></div></div>`;
     document.body.appendChild(d);
@@ -578,7 +578,7 @@ export class MP {
   }
   renderPlayers() {
     const paused = this.app.speed === 0 && this.app.sim?.session && !this.app.sim.session.done;
-    this.el.querySelector('.mpPl').innerHTML = `<div class="mpH">MULTIJUGADOR${paused ? ' · <b>PAUSA</b>' : ''}</div>` + this.players.map((p) => {
+    this.el.querySelector('.mpPl').innerHTML = `<div class="mpH">Multijugador${paused ? ' · <b>en pausa</b>' : ''}</div>` + this.players.map((p) => {
       const t = teamOf(p.team), on = this.online.has(p.id);
       return `<div class="mpP ${on ? '' : 'off'} ${p.id === this.myId ? 'me' : ''}"><i style="background:${t ? t.c1 : '#555'}"></i><b>${esc(p.name)}</b><span>${on ? (t ? esc(t.short) : 'espect.') : 'desconectado'}</span></div>`;
     }).join('') + (this.host && this.link ? `<div class="mpLinkS" title="Enlace para volver a entrar por Internet">${esc(this.link.replace('https://', ''))}</div>` : '');
@@ -598,7 +598,7 @@ export class MP {
     this.vel.classList.toggle('hidden', !v);
     if (!v) return;
     const voted = v.yes.includes(this.myId);
-    this.vel.innerHTML = `<div class="vq"><span class="k">VOTACIÓN · ${esc(v.by)} propone</span><b>${esc(v.label)}</b><span class="vn">${v.yes.length}/${v.need.length} a favor · ${v.left} s</span></div>
+    this.vel.innerHTML = `<div class="vq"><span class="k">Votación · ${esc(v.by)} propone</span><b>${esc(v.label)}</b><span class="vn">${v.yes.length}/${v.need.length} a favor · ${v.left} s</span></div>
       ${voted ? '<span class="vw">Has votado sí. Esperando al resto…</span>' : '<button class="btn" data-vote="1">Sí</button><button class="btn ghost" data-vote="0">No</button>'}`;
   }
   toast(text) {

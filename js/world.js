@@ -1153,7 +1153,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
         const g = scr.ctx; g.fillStyle = '#0b0c10'; g.fillRect(0, 0, 1024, 512);
         g.fillStyle = '#e10600'; g.fillRect(0, 0, 1024, 70);
         g.fillStyle = '#fff'; g.font = '900 48px "Titillium Web", Arial'; g.textAlign = 'left';
-        g.fillText(sim.session ? (sim.session.id === 'RACE' ? `VUELTA ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : sim.session.label) : 'NEURAL GP', 24, 52);
+        g.fillText(sim.session ? (sim.session.id === 'RACE' ? `VUELTA ${Math.max(1, Math.min(sim.raceLaps, (order[0]?.lap ?? 0) + 1))}/${sim.raceLaps}` : sim.session.label.toUpperCase()) : 'NEURAL GP', 24, 52);
         order.slice(0, 6).forEach((car, k) => {
           const y = 120 + k * 64;
           g.fillStyle = car.team.c1; g.fillRect(24, y - 44, 10, 54);
