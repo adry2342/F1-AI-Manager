@@ -70,6 +70,9 @@ export class Manager {
     const down = (e) => { if (e.button === 0) this.onAct(e); };
     this.el.addEventListener('pointerdown', down);
     this.gel.addEventListener('pointerdown', down);
+    // avisos: columna propia a la izquierda del muro (dentro se comían el sitio de las palancas y se cortaban)
+    this.alEl = document.createElement('div'); this.alEl.id = 'mgrAl'; this.alEl.className = 'als hidden'; hud.appendChild(this.alEl);
+    this.alEl.addEventListener('pointerdown', down);
     window.addEventListener('keydown', (e) => {
       if (e.target.tagName === 'INPUT') return;
       const k = e.key.toLowerCase();
@@ -109,6 +112,7 @@ export class Manager {
       case 'sel': this.sel = +v; this.stSel = null; this.dir.setFocus(this.car); break;
       case 'focus': this.dir.setFocus(car); break;
       case 'garage': this.toggleGarage(); break;
+      case 'mtoggle': this.el.classList.toggle('open'); break;   // (en el móvil el muro se pliega en su barra)
       case 'gclose': this.toggleGarage(false); break;
       case 'gtab': this.gTab = v; break;
       case 'pauseAl': this.pauseOnAlert = !this.pauseOnAlert; break;
@@ -554,12 +558,13 @@ export class Manager {
       const w = Math.max(0, Math.round((1 - c.tyre.wear) * 100)), st = c.retired ? 'OUT' : c.state === 'garage' ? 'GAR' : c.inPit ? 'BOX' : c.pitReq ? '→BOX' : '';
       return `<button data-a="sel" data-v="${k}" class="tab ${k === this.sel ? 'on' : ''}"><span class="p">${this.posOf(c) ? 'P' + this.posOf(c) : '—'}</span><span class="bar" style="background:${c.team.c1}"></span><b>${c.code}</b>${tyre(c.tyre.c)}<span class="k">${w}%</span>${st ? `<em>${st}</em>` : ''}</button>`;
     }).join('');
-    const html = `<div class="mt"><span>MURO</span><b>${esc(this.cars[0].team.name)}</b></div>
-      <button data-a="garage" class="gbig ${this.gOpen ? 'on' : ''}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5V20H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 20v-6h10v6M7 17h10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
-        <span><b>${this.gOpen ? 'CERRAR GARAJE' : 'GARAJE'}</b><small>Estrategia · Reglaje · Rendimiento · Radar</small></span><kbd>G</kbd></button>
+    // (sin textos de ayuda: robaban sitio y los avisos se cortaban; la explicación de cada opción sale al pasar el ratón)
+    const html = `<div class="mt" data-a="mtoggle"><span>MURO</span><b>${esc(this.cars[0].team.name)}</b><button data-a="pauseAl" class="pa ${this.pauseOnAlert ? 'on' : ''}" title="Pausa la sesión cuando llega un aviso">${this.pauseOnAlert ? 'PAUSA EN AVISOS' : 'SIN PAUSA'}</button></div>
+      <button data-a="garage" class="gbig ${this.gOpen ? 'on' : ''}" title="Estrategia · Reglaje · Rendimiento · Radar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10.5 12 4l9 6.5V20H3z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7 20v-6h10v6M7 17h10" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+        <span><b>${this.gOpen ? 'CERRAR GARAJE' : 'GARAJE'}</b></span><kbd>G</kbd></button>
       ${this.onGrid() ? this.startBtn() : ''}
       <div class="tabs">${tabs}</div>${this.cardHTML(this.car)}${race ? this.ordersHTML() : ''}`;
-    if (!this.mainEl) { this.mainEl = document.createElement('div'); this.mainEl.className = 'mgrMain'; this.alEl = document.createElement('div'); this.alEl.className = 'als'; this.el.append(this.mainEl, this.alEl); }
+    if (!this.mainEl) { this.mainEl = document.createElement('div'); this.mainEl.className = 'mgrMain'; this.el.append(this.mainEl); }
     if (html !== this.html) { this.html = html; this.mainEl.innerHTML = html; }
     this.renderAlerts();
   }
@@ -579,8 +584,7 @@ export class Manager {
     const state = c.retired ? 'ABANDONO' : c.out ? 'ELIMINADO' : c.state === 'garage' ? ( job ? `EN EL GARAJE · SIMULADOR ${job.done}/${job.target} VUELTAS` : 'EN EL GARAJE') : c.inPit ? (c.pitPhase === 'stop' ? 'PARADA' : c.pitPhase === 'in' ? 'ENTRANDO A BOXES' : 'SALIENDO DE BOXES')
       : c.finished ? 'BANDERA A CUADROS' : race ? '' : { push: 'VUELTA RÁPIDA', out: 'VUELTA DE SALIDA', in: 'VUELTA DE ENTRADA', cool: 'ENFRIANDO' }[c.lapKind] || '';
     const levers = LEVERS.map(([k, label, opts]) => `<div class="lv"><div class="lt"><span>${label}</span>${k === 'ers' ? `<span class="bat" title="Batería"><i style="width:${Math.round(c.ers * 100)}%"></i></span>` : ''}</div>
-      <div class="row seg">${opts.map(([v, l]) => `<button data-a="lev" data-k="${k}" data-v="${v}" data-i="${c.i}" class="${M[k] === v ? 'on' : ''} ${v}"><b>${l}</b><small>${COST[k][v][0]}</small></button>`).join('')}</div>
-      <div class="lc">${COST[k][M[k]][1]}</div></div>`).join('');
+      <div class="row seg">${opts.map(([v, l]) => `<button data-a="lev" data-k="${k}" data-v="${v}" data-i="${c.i}" class="${M[k] === v ? 'on' : ''} ${v}" title="${COST[k][v][1]}"><b>${l}</b><small>${COST[k][v][0]}</small></button>`).join('')}</div></div>`).join('');
     return `<div class="mc">
       <div class="mh" data-a="focus" data-i="${c.i}"><span class="p">${this.posOf(c) ? 'P' + this.posOf(c) : '—'}</span><span class="bar" style="background:${c.team.c1}"></span><b>${esc(c.drv.last)}</b>
         ${tyre(c.tyre.c)}<span class="wr" title="Goma que queda"><i style="width:${Math.max(0, 100 - wear)}%;background:${wear > 72 ? 'var(--red)' : wear > 55 ? 'var(--yellow)' : '#fff'}"></i></span><span class="k">${Math.max(0, 100 - wear)}%</span></div>
@@ -626,14 +630,13 @@ export class Manager {
   // avisos: cada uno se crea una vez y se queda (la barra de tiempo baja con una animación CSS); antes se redibujaba todo el
   // panel 4 veces por segundo y la animación de entrada se repetía: el aviso parpadeaba
   renderAlerts() {
+    // arriba del muro y solo cuando hay alguno (así caben enteros, aunque sean varios)
     const box = this.alEl, now = performance.now();
-    const head = `<div class="alh"><span>AVISOS</span><button data-a="pauseAl" class="${this.pauseOnAlert ? 'on' : ''}" title="Pausa la sesión cuando llega un aviso">pausar al llegar</button></div>`;
-    if (box.dataset.head !== head) { box.querySelector('.alh')?.remove(); box.insertAdjacentHTML('afterbegin', head); box.dataset.head = head; }
+    if (!box.querySelector('.alh')) box.insertAdjacentHTML('afterbegin', '<div class="alh"><span>AVISOS</span></div>');
     const ids = new Set(this.alerts.map((a) => String(a.id)));
     for (const n of box.querySelectorAll('.al')) if (!ids.has(n.dataset.id)) n.remove();
-    let none = box.querySelector('.none');
-    if (!this.alerts.length) { if (!none) box.insertAdjacentHTML('beforeend', '<p class="none">Sin avisos. El equipo te avisará de lo que pida una decisión.</p>'); return; }
-    none?.remove();
+    box.classList.toggle('hidden', !this.alerts.length);
+    if (!this.alerts.length) return;
     let prev = box.querySelector('.alh');
     for (const a of this.alerts) {
       let n = box.querySelector(`.al[data-id="${a.id}"]`);
@@ -764,7 +767,15 @@ export class Manager {
   }
   perfHTML() {
     const seg = (a, cur, opts) => `<div class="row seg mini">${opts.map(([v, l]) => `<button data-a="${a}" data-v="${v}" class="${cur === v ? 'on' : ''}"><b>${l}</b></button>`).join('')}</div>`;
-    const filt = `<div class="pfil">${seg('pv', this.pv, [['chart', 'Gráfica'], ['cmp', 'Comparar'], ['laps', 'Vueltas']])}${seg('pf', this.pf, [['all', 'Equipo'], ...this.cars.map((c) => [c.code, c.code])])}${seg('ps', this.ps, [['all', 'Todas'], ['FP', 'Libres 1'], ['FP2', 'Libres 2'], ['Q', 'Clasif.'], ['RACE', 'Carrera']])}${this.pv === 'laps' ? '' : seg('pw', this.pw, [['dry', 'Seco'], ['wet', 'Mojado']])}</div>`;
+    // (antes cuatro filas de botones sin nombre: arriba la vista; debajo los filtros con su etiqueta, y solo las sesiones
+    // que ya tienen vueltas y «Mojado» si las hay)
+    const all = this.cars.flatMap((c) => c.mgr.laps), has = (f) => all.some(f);
+    const sess = [['all', 'Todas'], ['FP', 'Libres 1'], ['FP2', 'Libres 2'], ['Q', 'Clasif.'], ['RACE', 'Carrera']].filter(([v]) => v === 'all' || has((l) => (v === 'Q' ? l.s[0] === 'Q' : l.s === v)));
+    if (!sess.some(([v]) => v === this.ps)) this.ps = 'all';
+    const wetToo = has((l) => condOf(l) === 'wet'); if (!wetToo) this.pw = 'dry';
+    const grp = (k, html) => `<div class="pgr"><span class="k">${k}</span>${html}</div>`;
+    const filt = `<div class="pview">${seg('pv', this.pv, [['chart', 'Gráfica'], ['cmp', 'Comparar'], ['laps', 'Vueltas']])}</div>
+      ${all.length ? `<div class="pfil">${grp('Piloto', seg('pf', this.pf, [['all', 'Los dos'], ...this.cars.map((c) => [c.code, c.code])]))}${sess.length > 2 ? grp('Sesión', seg('ps', this.ps, sess)) : ''}${this.pv !== 'laps' && wetToo ? grp('Pista', seg('pw', this.pw, [['dry', 'Seco'], ['wet', 'Mojado']])) : ''}</div>` : ''}`;
     const sub = { chart: 'Tiempo de vuelta frente al desgaste, por goma.', cmp: 'Cada piloto por separado: qué reglaje, goma o ritmo le va mejor.', laps: 'Todas las vueltas hechas, también las que no cuentan (y por qué).' }[this.pv];
     const head = `<div class="gtitle"><b>Rendimiento real</b><span>${sub} Tiempos corregidos por gasolina y por la goma que va dejando la pista.</span></div>${filt}`;
     if (this.pv === 'laps') return head + this.lapsTable();

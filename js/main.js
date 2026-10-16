@@ -46,6 +46,8 @@ async function main(choice) {
   const T = buildTrack(trackId);
   msg('Levantando gradas, boxes y escapatorias…'); await frame();
   const world = buildWorld(T, scene, renderer, quality);
+  // ajuste de visibilidad (ver LOOK en textures.js): b más luz; c y d algo más de luz y de relleno en las sombras
+  { const L = TX.LOOK; if (L !== 'a') { renderer.toneMappingExposure *= L === 'b' ? 1.28 : 1.1; if (world.hemi) world.hemi.intensity *= L === 'b' ? 1.3 : 1.2; } }
   msg('Plantando bosques y montando el paddock…'); await frame();
   const scenery = buildScenery(T, scene, world, quality, world.sunDir);
   msg('Preparando los 22 monoplazas…'); await frame();

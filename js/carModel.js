@@ -111,7 +111,9 @@ function mats(team, drv) {
   if (matCache.has(key)) return matCache.get(key);
   const carbonTex = TX.carbon();
   const m = {
-    paint: new THREE.MeshStandardMaterial({ map: TX.livery(team, drv.num), metalness: 0.25, roughness: 0.22, envMapIntensity: 0.85 }),
+    // (ajuste de visibilidad c: más reflejo; d: barniz, que marca la forma de los coches oscuros con brillos)
+    paint: TX.LOOK === 'd' ? new THREE.MeshPhysicalMaterial({ map: TX.livery(team, drv.num), metalness: 0.2, roughness: 0.3, clearcoat: 0.9, clearcoatRoughness: 0.08, envMapIntensity: 1.3 })
+      : new THREE.MeshStandardMaterial({ map: TX.livery(team, drv.num), metalness: 0.25, roughness: TX.LOOK === 'c' ? 0.18 : 0.22, envMapIntensity: TX.LOOK === 'c' ? 1.25 : 0.85 }),
     c1: new THREE.MeshStandardMaterial({ color: team.c1, metalness: 0.25, roughness: 0.22, envMapIntensity: 0.75 }),
     c2: new THREE.MeshStandardMaterial({ color: team.c2, metalness: 0.25, roughness: 0.25, envMapIntensity: 0.70 }),
     c3: new THREE.MeshStandardMaterial({ color: team.c3, metalness: 0.30, roughness: 0.28, envMapIntensity: 0.70 }),

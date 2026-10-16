@@ -27,11 +27,14 @@ export const SPONSORS = [
   ['TENSOR', '#212121', '#FF3D00'], ['GRADIENT', '#F5F5F5', '#D81B60'], ['BACKPROP', '#263238', '#76FF03'],
 ];
 
+// ajuste de visibilidad (?look=a|b|c|d): con poco brillo de pantalla el asfalto, las ruedas y los coches negros se
+// confundían. c y d aclaran el asfalto para que lo oscuro destaque encima
+export const LOOK = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('look')) || 'a';
 export function asphalt() {
   return once('asphalt', () => {
     const W = 512, H = 512, c = canvas(W, H), g = c.getContext('2d'), r = rnd(7);
     // Base gris asfalto circuito uniforme y neutro
-    g.fillStyle = '#37393d';
+    g.fillStyle = LOOK === 'c' || LOOK === 'd' ? '#4a4d53' : '#37393d';
     g.fillRect(0, 0, W, H);
     const img = g.getImageData(0, 0, W, H), d = img.data;
     for (let i = 0; i < d.length; i += 4) {

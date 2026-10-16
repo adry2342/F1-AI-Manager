@@ -1575,7 +1575,7 @@ export class Sim {
       if (clean) car.runGood = true;
       if (clean || race) {
         if (!this.fastest || lapT < this.fastest.t) {
-          const had = !!this.fastest; this.fastest = { car, t: lapT };
+          const had = !!this.fastest; this.fastest = { car, t: lapT, lap: car.lap };
           if (!race) this.bestCP = car.lapCP.slice();
           if (had || !race) this.emit({ type: 'fastest', car, time: lapT });
         }
