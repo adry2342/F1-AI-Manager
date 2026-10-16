@@ -1,9 +1,11 @@
 # Pendiente
 
 ## Esperan tu decisión (ver `propuestas/index.html`)
-- **Rediseño de la interfaz**: tres maquetas (Caelestia, Nothing, retransmisión pulida). Elegir una y la aplico a todo.
-- **Visibilidad con poco brillo**: ajustes A (como ahora), B (más luz), C (más contraste), D (C + barniz). Se prueban en el juego con `?look=c`.
-- **Sonido**: motor A/B/C/D y ambiente A/B, en WAV y grabados en el juego. En el juego: `?motor=b&amb=b`.
+- **Acento de Caelestia** (estilo elegido): lila, azul, menta, ámbar, sin color o color del equipo. Con el acento, aplico el rediseño a toda la interfaz.
+
+## Decidido (17/10)
+- Visibilidad C por defecto (D cuesta un 18 % de FPS en gp y se ve casi igual). `?look=a` vuelve a la de antes.
+- Motor D (orgánico y grave), 3 dB más bajo que el de antes; ambiente B (murmullo de público y rachas de viento). `?motor=a&amb=a` vuelve al de antes.
 
 ## Hecho (16/10, noche)
 - Saltar: tu equipo lo lleva la IA hasta el final de la sesión (sale, aprende, cambia gomas, para).

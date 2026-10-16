@@ -288,14 +288,15 @@ export class EngineAudio {
       if (this.v6 && !this.v6._sp) return;
       if (this.v6) { this.v6._sp.onaudioprocess = null; this.v6._sp.disconnect(); this.v6Gain.disconnect(); }
       this.v6 = P;
-      const g = this.v6Gain = ctx.createGain(); g.gain.value = 1.1;
+      // el d suena más lleno (+1 dB de media que el a): 3 dB por debajo del de antes
+      const g = this.v6Gain = ctx.createGain(); g.gain.value = OPT.org && OPT.low ? 0.78 : 1.1;
       node.connect(g).connect(engineAirFilter);
       for (const h of this.harmonics) { h.g.gain.value = 0; }
       this.subBassGain.gain.value = 0; this.raspGain.gain.value = 0;
     };
     // si el AudioWorklet no arranca (en algunos Chrome addModule no termina nunca), el mismo motor en el hilo principal
-    // variante del motor a probar (?motor=b orgánico, c grave, d los dos; ver makeV6)
-    const mv = new URLSearchParams(location.search).get('motor'), OPT = { org: mv === 'b' || mv === 'd' ? 1 : 0, low: mv === 'c' || mv === 'd' ? 1 : 0 };
+    // variante del motor (?motor=a el de antes, b orgánico, c grave, d los dos; ver makeV6). Por defecto d
+    const mv = new URLSearchParams(location.search).get('motor') || 'd', OPT = { org: mv === 'b' || mv === 'd' ? 1 : 0, low: mv === 'c' || mv === 'd' ? 1 : 0 };
     const fallback = () => {
       if (this.v6 || !ctx.createScriptProcessor) return;
       const sp = ctx.createScriptProcessor(4096, 0, 1), gen = makeV6(ctx.sampleRate, 7, OPT);
@@ -519,9 +520,9 @@ export class EngineAudio {
     crowdFilter.Q.value = 1.8;
     const crowdGain = this.crowdGain = ctx.createGain();
     crowdGain.gain.value = 0;
-    // variante de ambiente a probar (?amb=b): el público como murmullo de voces (tres bandas de formantes que suben y
+    // ambiente (por defecto b; ?amb=a el de antes): el público como murmullo de voces (tres bandas de formantes que suben y
     // bajan cada una a su aire) en vez de un solo ruido filtrado, y el viento a rachas
-    this.amb = new URLSearchParams(location.search).get('amb') || 'a';
+    this.amb = new URLSearchParams(location.search).get('amb') || 'b';
     if (this.amb === 'b') {
       this.crowdBands = [[480, 2.2], [1150, 2.8], [2500, 3.2]].map(([f, q]) => {
         const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;

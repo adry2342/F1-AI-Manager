@@ -28,8 +28,9 @@ export const SPONSORS = [
 ];
 
 // ajuste de visibilidad (?look=a|b|c|d): con poco brillo de pantalla el asfalto, las ruedas y los coches negros se
-// confundían. c y d aclaran el asfalto para que lo oscuro destaque encima
-export const LOOK = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('look')) || 'a';
+// confundían. c y d aclaran el asfalto para que lo oscuro destaque encima. Por defecto c: d (barniz) cuesta un 18 % de
+// FPS en gp por el MeshPhysicalMaterial y se ve casi igual; a es el de antes
+export const LOOK = (typeof location !== 'undefined' && new URLSearchParams(location.search).get('look')) || 'c';
 export function asphalt() {
   return once('asphalt', () => {
     const W = 512, H = 512, c = canvas(W, H), g = c.getContext('2d'), r = rnd(7);
