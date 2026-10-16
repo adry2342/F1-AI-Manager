@@ -57,8 +57,11 @@ for (const s of [2, 4, 1]) { await click(`[data-speed="${s}"]`); check(`velocida
 const t0 = await ev(() => window.__sim.t); await p.keyboard.press(' '); await p.waitForTimeout(600);
 check('espacio pausa', Math.abs((await ev(() => window.__sim.t)) - t0) < 0.2 || (await ev(() => window.__app.speed === 0)));
 await p.keyboard.press(' ');
+// (sin repeticiones automáticas mientras tanto: si saltaba una, iba cambiando de plano y el 7 «fallaba» de vez en cuando)
+await ev(() => { const R = window.__app.replay; R.auto = false; R.pending = null; if (R.active) R.end(); });
 for (const k of ['1', '5', '7']) { await p.keyboard.press(k); await p.waitForTimeout(200); }
 check('tecla 7 = pista', await ev(() => window.__dir.type === 'track'));
+await ev(() => { window.__app.replay.auto = true; });
 await p.keyboard.press('a'); await p.keyboard.press('+'); check('tecla + dobla', await ev(() => window.__app.speed === 2)); await p.keyboard.press('-');
 await p.keyboard.press('h'); check('H oculta HUD', await ev(() => document.getElementById('hud').classList.contains('hidden'))); await p.keyboard.press('h');
 await p.keyboard.press('m'); const snd = await ev(() => window.__app.audio.on); await p.keyboard.press('m');
@@ -109,7 +112,7 @@ for (const want of ['FP', 'FP2', 'Q1', 'Q2', 'Q3', 'RACE']) {
   // saltando, el equipo del mánager lo lleva la IA: sale a pista y marca vueltas como los demás
   if (a.mode === 'mgr' && want !== 'RACE') {
     const n = await ev((s) => window.__app.manager.cars.filter((c) => !c.out).map((c) => c.mgr.laps.filter((l) => l.s === s).length), want);
-    check(`mánager: al saltar ${want} su equipo da vueltas`, n.every((x) => x > 0), n.join('/'));
+    check(`mánager: al saltar ${want} su equipo da vueltas`, n.every((x) => x > 0), n.join('/') + ' ' + JSON.stringify(await ev(() => window.__app.manager.cars.map((c) => ({ out: c.out, st: c.state, ret: c.retired, best: c.best, plan: c.plan?.idx, runs: c.plan?.runs.length, auto: window.__sim.autoMgr, wx: window.__sim.wx.line })))));
   }
   await click('#mLearn'); check(`aprendizaje desde resultados ${want}`, !!(await p.$('#mBack'))); await click('#mBack');
   if (want === 'RACE') break;

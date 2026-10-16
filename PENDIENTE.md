@@ -1,55 +1,31 @@
 # Pendiente
 
-## Choques y daños
-- Los daños son solo estéticos (no cambian cómo va el coche), pero no puede pasar la sesión entera roto: al entrar a boxes se arregla al instante.
-- Golpe fuerte → abandono, con bandera amarilla o coche de seguridad.
-- Repetición: comprobar qué se ve de los choques y las piezas rotas.
-- Hay tecpro donde no hay tecpro (el choque detecta barreras que no están dibujadas, o al revés).
-- Menor: cuando un coche rápido alcanza a uno muy lento, a veces uno se teletransporta y no parece que haya choque.
+## Esperan tu decisión (ver `propuestas/index.html`)
+- **Rediseño de la interfaz**: tres maquetas (Caelestia, Nothing, retransmisión pulida). Elegir una y la aplico a todo.
+- **Visibilidad con poco brillo**: ajustes A (como ahora), B (más luz), C (más contraste), D (C + barniz). Se prueban en el juego con `?look=c`.
+- **Sonido**: motor A/B/C/D y ambiente A/B, en WAV y grabados en el juego. En el juego: `?motor=b&amb=b`.
 
-## Val d'Ambre: errores de pilotos
-- Demasiados errores. Mirar dónde se concentran y, en esas curvas: mejorar las escapatorias, mover muros o poner tecpro en más sitios.
+## Hecho (16/10, noche)
+- Saltar: tu equipo lo lleva la IA hasta el final de la sesión (sale, aprende, cambia gomas, para).
+- Saltar un 12 % más rápido; opción en la portada para libres de 60/30/15 min (lo que más espera en espectador).
+- Daños solo estéticos, se arreglan en boxes al instante; la IA vuelve a boxes si rompe algo en libres/clasificación.
+- Repetición con piezas rotas, trozos y chispas; tecpro solo donde lo hay; choque contra la cara del tecpro.
+- Alcances con empujón y rebote; los saltos de lado (teletransportes) se dibujan como un deslizamiento.
+- Val d'Ambre: más escapatoria en las 9 curvas donde más se salían (abandonos 27 → 15); menos atascos en grava en todos.
+- Lluvia: más variedad en el cambio a gomas de agua cuando la decisión es dudosa.
+- Cámaras: volante que gira en el cockpit, trasera más usada y mejor encuadrada, dron más abierto.
+- Carteles del muro al derecho desde la grada.
+- Muro: sin textos de relleno, avisos en columna propia (caben varios); garaje más grande; Rendimiento con filtros etiquetados.
+- Aprendizaje medido por «dominio» (vuelta teórica frente a la ideal, con lo que pierde por trazada y por ataque).
+- Resultados de carrera: estadísticas (posiciones vuelta a vuelta, estrategias, ritmo, destacados).
+- Móvil: vertical y horizontal (espectador y mánager).
+- e2e: arreglado el fallo intermitente de la tecla 7.
 
-## Estrategia
-- Cambio de neumáticos con lluvia: ahora casi todos entran en la misma vuelta. Si no está claro qué es mejor, que se repartan más.
-
-## Cámaras
-- Trasera: que se use más (bien hecha, que es difícil).
-- Dron: plano más amplio.
-- Quizá: repetición más larga o de momentos elegidos (adelantamiento, choque), si queda bien.
-
-- Volante que gira en la cámara cockpit (se nota el contravolante en las salvadas y las curvas).
-
-## Mánager
-- **Lo que más molesta:** al darle a «Saltar» tus pilotos no salen a pista (nadie los saca), así que no aprenden y te quedas atrás. Idea: al simular, que tu equipo se lleve solo, como cualquier otro equipo de la IA.
-- Los textos del muro sobran: hacen que los avisos se corten o que no quepan dos a la vez.
-- Ventana del garaje más grande.
-- Rendimiento: lioso con tantas opciones (las funciones gustan, hay que ordenarlo).
-- Aprendizaje: ahora solo se ve por tiempo de vuelta, que ya sale en la tabla. Medirlo de otra forma.
-
-## Espectador
-- **Lo que más molesta:** el tiempo que tarda en simular. → que «Saltar» vaya mucho más rápido.
-
-## Interfaz
-- Rediseño completo: color, fuentes, estética, botones. Ahora no está mal, pero no al nivel de clutchesports o el tema de Spotify.
-
-## Visibilidad
-- Con poco brillo cuesta distinguir lo oscuro (asfalto, ruedas, carrocerías negras): todo se ve muy homogéneo. Probar iluminación, exposición o texturas (enseñar opciones en foto).
-
-## Móvil
-- Jugarlo entero desde el móvil; si no se puede, al menos en modo espectador.
-
-## Sonido
-- Motor y ambiente: muy digitales y poco orgánicos. Mejorarlos mucho.
-
-## Estadísticas
-- Pantalla final con estadísticas: gráficas de vueltas, adelantamientos, etc.
-
-## Ya avisado antes
-- Los carteles de patrocinio de las vallas se leen al revés desde la grada (todos los circuitos).
-- Val d'Ambre va a ~60 FPS (Monte Alto a 73): el bosque pesa.
-- e2e: fallo intermitente de «tecla 7 = cámara de pista».
+## Queda
+- Val d'Ambre va a ~68 FPS (Monte Alto ~79) con la GPU en ahorro. Probé detalle de árboles según la distancia a la cámara y fue más lento: descartado.
+- Simulación: el coste está repartido (aprendizaje 26 %, física 30 %); acelerar más pide cambios grandes. Alternativa ya hecha: libres más cortas.
 - Multijugador: sin probar con dos personas de verdad.
+- Choques: el abandono con coche de seguridad virtual ya existía; no hay coche de seguridad «de verdad».
 
 ## Más adelante (ahora no)
 - Temporada con puntos y desarrollo del coche entre carreras.

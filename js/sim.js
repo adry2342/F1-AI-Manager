@@ -198,6 +198,7 @@ export class Sim {
   startSession(id) {
     const T = this.T;
     this.session = { id, ...SESSIONS[id], phase: 'run', t0: 0, done: false };
+    if (isFP(id) && this.fpDur) this.session.dur = this.fpDur;   // libres más cortas (opción de la portada)
     this.gravel = []; this.barrierHits = [];
     this.autoMgr = false;   // «Saltar»: los equipos del mánager los lleva la IA hasta el final de la sesión (ver mgrHand)
     this.t = 0; this.flag = 'GREEN'; this.vscT = 0; this.initWeather(id); this.fastest = null; this.sessionBestSec = null; this.zoneBest = null; this.bestCP = null;

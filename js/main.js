@@ -56,6 +56,8 @@ async function main(choice) {
   // (multijugador: la misma semilla en todas las máquinas -> el mismo fin de semana)
   const sim = new Sim(T, { raceLaps: choice.raceLaps, brains: {}, seed: choice.mp?.seed });
   sim.weatherMode = choice.weather;
+  // libres más cortas (portada): menos espera; los pilotos aprenden menos vueltas
+  if (choice.fpMin && choice.fpMin !== 60) sim.fpDur = choice.fpMin * 60;
   const visuals = sim.cars.map((car) => { const v = buildCar(car.team, car.drv); scene.add(v.root); return v; });
   const fx = buildFx(scene, T, sim, visuals, world);
 
@@ -295,6 +297,7 @@ async function startScreen() {
   const quality = params.get('q') || settings.quality || 'high';
   const trackId = CIRCUITS[params.get('track')] ? params.get('track') : CIRCUITS[settings.track] ? settings.track : 'gp';
   const laps = +(params.get('laps') || settings.raceLaps || 20), wx = params.get('wx') || settings.weather || 'random';
+  const fpMin = [60, 30, 15].includes(+settings.fpMin) ? +settings.fpMin : 60;
   const loading = document.getElementById('loading'); loading.style.display = 'none'; document.body.classList.add('menu');
   // circuitos: dibujo del trazado de cada uno (del eje real), longitud y curvas
   const trackCard = (c) => {
@@ -311,6 +314,7 @@ async function startScreen() {
   const hidden = (id, opts, cur) => `<select id="${id}" hidden>${opts.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
   const O = {
     iLaps: [10, 15, 20, 30].map((l) => [l, l]),
+    iFP: [[60, '1 h'], [30, '30 min'], [15, '15 min']],
     iWx: [['random', 'Aleatorio'], ['dry', 'Seco'], ['mixed', 'Chubascos'], ['wet', 'Lluvia']],
     iMode: [['watch', 'Espectador'], ['mgr', 'Mánager'], ['mp', 'Multijugador']],
     iQ: [['high', 'Alta'], ['low', 'Baja']],
@@ -330,7 +334,7 @@ async function startScreen() {
         <h3>Circuito</h3>
         <div class="tcards">${Object.values(CIRCUITS).map(trackCard).join('')}</div>
         <h3>El fin de semana</h3>
-        <div class="sched"><div><b>Libres 1 y 2</b><span>1 h cada una · buscan trazada y límite</span></div><div><b>Clasificación</b><span>Q1 12′ · Q2 10′ · Q3 9′</span></div><div><b>Carrera</b><span id="schedLaps">${laps} vueltas · paradas y peleas</span></div></div>
+        <div class="sched"><div><b>Libres 1 y 2</b><span id="schedFP">${fpMin === 60 ? '1 h' : fpMin + ' min'} cada una · buscan trazada y límite</span></div><div><b>Clasificación</b><span>Q1 12′ · Q2 10′ · Q3 9′</span></div><div><b>Carrera</b><span id="schedLaps">${laps} vueltas · paradas y peleas</span></div></div>
       </div>
       <div class="st-r">
         <h3>Modo</h3>${seg('iMode', O.iMode, curMode)}
@@ -346,12 +350,13 @@ async function startScreen() {
         <div class="spOnly ${curMode === 'mp' ? 'off' : ''}">
         <h3>Tiempo</h3>${seg('iWx', O.iWx, wx)}
         <h3>Vueltas de carrera</h3>${seg('iLaps', O.iLaps, laps)}
+        <h3>Duración de los libres</h3>${seg('iFP', O.iFP, fpMin)}
         <h3>Calidad gráfica</h3>${seg('iQ', O.iQ, quality)}
         <button class="btn go" id="iGo">Empezar el fin de semana</button>
         </div>
         <p class="keys"><b>A</b> auto · <b>1–8</b> planos · <b>Espacio</b> pausa · <b>+/−</b> velocidad · <b>R</b> repetición · <b>L</b> aprendizaje · <b>Esc</b> menú · <b>G</b> garaje (mánager)</p>
       </div>
-      ${hidden('iTrack', Object.values(CIRCUITS).map((c) => [c.id, c.name]), trackId)}${hidden('iLaps', O.iLaps, laps)}${hidden('iWx', O.iWx, wx)}${hidden('iMode', O.iMode, curMode)}${hidden('iQ', O.iQ, quality)}${hidden('iTeam', TEAMS.map((t) => [t.id, t.name]), curTeam)}
+      ${hidden('iTrack', Object.values(CIRCUITS).map((c) => [c.id, c.name]), trackId)}${hidden('iLaps', O.iLaps, laps)}${hidden('iFP', O.iFP, fpMin)}${hidden('iWx', O.iWx, wx)}${hidden('iMode', O.iMode, curMode)}${hidden('iQ', O.iQ, quality)}${hidden('iTeam', TEAMS.map((t) => [t.id, t.name]), curTeam)}
     </div></div>`;
   intro.querySelector('.sheet').classList.add('startSheet');
   // los controles visibles mueven los <select> ocultos (que son los que se leen al empezar)
@@ -360,6 +365,7 @@ async function startScreen() {
     g.querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b));
     const s = intro.querySelector('#' + g.dataset.for); s.value = b.dataset.v; s.dispatchEvent(new Event('change'));
     if (g.dataset.for === 'iLaps') intro.querySelector('#schedLaps').textContent = `${b.dataset.v} vueltas · paradas y peleas`;
+    if (g.dataset.for === 'iFP') intro.querySelector('#schedFP').textContent = `${b.dataset.v === '60' ? '1 h' : b.dataset.v + ' min'} cada una · buscan trazada y límite`;
   }));
   intro.querySelectorAll('[data-team]').forEach((b) => (b.onclick = () => { intro.querySelectorAll('[data-team]').forEach((x) => x.classList.toggle('on', x === b)); intro.querySelector('#iTeam').value = b.dataset.team; }));
   // elegir circuito no carga nada: se carga al empezar
@@ -403,7 +409,7 @@ async function startScreen() {
     intro.querySelector('#mpJoin').onclick = () => goMP(mpStart('join'));
     const go = () => {
       const v = (id) => intro.querySelector('#' + id).value;
-      const choice = { quality: v('iQ'), track: v('iTrack'), raceLaps: +v('iLaps'), weather: v('iWx'), mode: v('iMode'), team: v('iTeam') };
+      const choice = { quality: v('iQ'), track: v('iTrack'), raceLaps: +v('iLaps'), weather: v('iWx'), mode: v('iMode'), team: v('iTeam'), fpMin: +v('iFP') };
       writeJSON(SETTINGS, { ...settings, ...choice });
       intro.remove(); loading.style.display = ''; document.body.classList.remove('menu');
       resolve(choice);
