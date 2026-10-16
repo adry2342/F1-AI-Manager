@@ -443,14 +443,18 @@ export class Sim {
   // ¿cambiar de neumático por el agua? null = no; 'I' / 'W' / 'slick'
   wxTyre(car) {
     const W = this.wx, c = car.tyre.c, wet = COMPOUNDS[c].wet;
-    // mira también si viene más lluvia (o si para)
-    const est = car.wetEst + (W.target - W.rain) * 0.35;
     // cada piloto (y cada carrera) apuesta distinto: unos paran a la primera gota, otros aguantan con lisos
     // (y cada equipo tiene su tendencia: unos muro arriesgan siempre, otros van a lo seguro)
     if (car.wxBias == null) car.wxBias = gauss(this.rng) * 0.11 + (((car.team.id || '').charCodeAt(1) % 5) - 2) * 0.04;
+    // y cada muro lee el radar a su manera: cuánto pesa lo que viene (más lluvia o que pare) frente a lo que hay ya
+    if (car.wxRead == null) car.wxRead = 0.1 + 0.5 * this.rng();
+    const est = car.wetEst + (W.target - W.rain) * car.wxRead;
     // (acotado: con un sesgo grande el umbral salía negativo y en seco pedía intermedios tras la vuelta de salida)
     const brave = Math.max(-1.2, Math.min(1.2, car.drv.agg - 0.7 + car.wxBias / 0.1));
-    if (!wet && est > Math.max(0.12, 0.24 + 0.1 * brave)) return est > 0.85 ? 'W' : 'I';
+    // a gomas de agua: con poca agua la decisión es dudosa y los umbrales se separan más (unos paran a la primera, otros
+    // aguantan con lisos si creen que para); antes casi todos entraban en la misma vuelta
+    const easing = W.target < W.rain - 0.05 ? 0.08 * Math.max(0, brave) : 0;
+    if (!wet && est > Math.max(0.12, Math.min(0.5, 0.26 + 0.17 * brave + easing))) return est > 0.85 ? 'W' : 'I';
     // de intermedio a lluvia (y vuelta) cuesta una parada: solo si queda carrera para amortizarla, y muchos aguantan
     const left = this.session.id === 'RACE' ? this.raceLaps - car.lap : 99;
     if (c === 'I' && est > 0.9 + 0.1 * brave && left > 6) return 'W';
