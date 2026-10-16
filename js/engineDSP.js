@@ -2,13 +2,18 @@
 // cilindro, 3 por vuelta del cigüeñal— con pequeñas diferencias entre cilindros y de un ciclo a otro, que pasa por
 // el escape (resonancias + tubo). Con gas los pulsos son densos, graves y con cuerpo; sin gas, suaves.
 // Es una función pura para poder usarla dentro de un AudioWorklet y también en node (tools/engineWav.mjs).
-export function makeV6(sr, seed = 1) {
+// opt (variantes a probar; sin opt, el sonido de siempre): org = irregularidad orgánica (explosiones menos iguales,
+// vueltas que no están quietas y soplido de admisión/turbo); low = timbre más grave y redondo
+export function makeV6(sr, seed = 1, opt = {}) {
+  const org = opt.org || 0, low = opt.low || 0;
+  let wob = 0, wobV = 0, whoosh = 0, wl = 0, wb = 0;
   let rs = seed >>> 0 || 1;
   const rnd = () => { rs ^= rs << 13; rs ^= rs >>> 17; rs ^= rs << 5; return (rs >>> 0) / 4294967296; };
   const cyl = [1.02, 0.88, 1.08, 0.92, 1.05, 0.85];      // balance y asimetría de flujo entre cilindros / bancadas
   // resonador de 2 polos (paso banda) con frecuencia y Q
   const res = (f, q) => ({ f, q, y1: 0, y2: 0 });
-  const R = [res(360, 1.9), res(860, 1.8), res(1900, 1.4), res(150, 1.4), res(80, 1.6)];
+  const fs = 1 - 0.15 * low;
+  const R = [res(360 * fs, 1.9), res(860 * fs, 1.8), res(1900 * fs, 1.4), res(150 * fs, 1.4), res(80, 1.6)];
   // medio orden (media frecuencia de encendido): el «bramido» grave del escape de un V6, que sigue a las vueltas
   const half = res(200, 2.2);
   const comb = new Float32Array(Math.round(sr * 0.01)); let cw = 0;
@@ -24,7 +29,7 @@ export function makeV6(sr, seed = 1) {
     const RG = [
       0.80 - 0.10 * load,                               // 360 Hz: garganta de escape / rugido medio
       0.45 - 0.25 * load,                               // 860 Hz: mordida mecánica
-      0.22 - 0.12 * load,                               // 1900 Hz: timbre metálico suave
+      (0.22 - 0.12 * load) * (1 - 0.4 * low),           // 1900 Hz: timbre metálico suave
       0.60 + 0.45 * load,                               // 150 Hz: pegada de cigüeñal y escape
       0.90 + 0.55 * load                                // 80 Hz: subgrave y masa del bloque
     ];
@@ -38,7 +43,9 @@ export function makeV6(sr, seed = 1) {
     for (let i = 0; i < n; i++) {
       // Micro-irregularidad torsional / combustión estocástica bajo carga
       const jitter = (rnd() * 2 - 1) * 0.008 * load;   // (con 0,024 las explosiones salían a destiempo: petardeaba con gas)
-      phase += (cycleHz * (1 + jitter)) / sr;
+      // (org) deriva lenta de las vueltas: el motor nunca va a un régimen exacto (paseo aleatorio amortiguado, ~±0,4 %)
+      if (org) { wobV += (rnd() * 2 - 1) * 0.0000014 * org - wob * 0.00001 - wobV * 0.002; wob += wobV; }
+      phase += (cycleHz * (1 + jitter + wob)) / sr;
       if (phase >= 1) phase -= 1;
       const k = Math.floor(phase * 6);
       if (k !== next) {
@@ -48,7 +55,7 @@ export function makeV6(sr, seed = 1) {
         // las dos bancadas no suenan igual (escapes de distinta longitud): esa alternancia es la que da energía a media
         // frecuencia de encendido, el tono grave que se oye por debajo del aullido
         const bank = k % 2 ? 1 - 0.26 * load : 1 + 0.26 * load;
-        let a = cyl[k] * bank * onLoad * (0.90 + 0.20 * rnd()) * (1 - cut);
+        let a = cyl[k] * bank * onLoad * (0.90 - 0.08 * org + (0.20 + 0.16 * org) * rnd()) * (1 - cut);
         // (14/10: sin petardeo en retención: explosiones sueltas de 1,3-1,9 veces una normal que sonaban a chisporroteo)
         env += a;
         nEnv += a * (0.35 + 0.5 * (1 - load) + 0.28 * load);
@@ -63,7 +70,9 @@ export function makeV6(sr, seed = 1) {
         const Z = R[r], v = Z.b * lp - Z.a1 * Z.y1 - Z.a2 * Z.y2;
         Z.y2 = Z.y1; Z.y1 = v; y += v * RG[r];
       }
-      { const v = half.b * lp - half.a1 * half.y1 - half.a2 * half.y2; half.y2 = half.y1; half.y1 = v; y += v * 1.0 * load; }   // (sin gas, nada: la retención gustaba como estaba)
+      { const v = half.b * lp - half.a1 * half.y1 - half.a2 * half.y2; half.y2 = half.y1; half.y1 = v; y += v * (1.0 + 0.35 * low) * load; }
+      // (org) soplido de admisión y turbo: ruido en banda media-alta que sube con el gas y las vueltas
+      if (org) { const nz = rnd() * 2 - 1; wl += 0.18 * (nz - wl); wb += 0.02 * (wl - wb); whoosh += 0.0005 * ((0.15 + 0.85 * load) * Math.min(1, rpm / 12000) - whoosh); y += (wl - wb) * whoosh * 0.9 * org; }   // (sin gas, nada: la retención gustaba como estaba)
       // Tubo de escape con amortiguación de agudos en la realimentación
       const dly = Math.min(comb.length - 2, sr * (0.0016 + 0.0022 * (1 - (rpm - 4000) / 9000)));
       const rp = cw - dly, i0 = Math.floor(rp), fr = rp - i0, L = comb.length;

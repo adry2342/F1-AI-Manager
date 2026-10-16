@@ -294,9 +294,11 @@ export class EngineAudio {
       this.subBassGain.gain.value = 0; this.raspGain.gain.value = 0;
     };
     // si el AudioWorklet no arranca (en algunos Chrome addModule no termina nunca), el mismo motor en el hilo principal
+    // variante del motor a probar (?motor=b orgánico, c grave, d los dos; ver makeV6)
+    const mv = new URLSearchParams(location.search).get('motor'), OPT = { org: mv === 'b' || mv === 'd' ? 1 : 0, low: mv === 'c' || mv === 'd' ? 1 : 0 };
     const fallback = () => {
       if (this.v6 || !ctx.createScriptProcessor) return;
-      const sp = ctx.createScriptProcessor(4096, 0, 1), gen = makeV6(ctx.sampleRate, 7);
+      const sp = ctx.createScriptProcessor(4096, 0, 1), gen = makeV6(ctx.sampleRate, 7, OPT);
       const P = { rpm: 5000, load: 0, cut: 0, _sp: sp };
       sp.onaudioprocess = (e) => { const o = e.outputBuffer.getChannelData(0); gen(o, o.length, P.rpm, P.load, P.cut); };
       useV6(sp, P);
@@ -304,7 +306,7 @@ export class EngineAudio {
     if (ctx.audioWorklet) {
       ctx.audioWorklet.addModule(new URL('./v6worklet.js', import.meta.url)).then(() => {
         if (this.v6 && !this.v6._sp) return;
-        const node = new AudioWorkletNode(ctx, 'v6', { outputChannelCount: [1] });
+        const node = new AudioWorkletNode(ctx, 'v6', { outputChannelCount: [1], processorOptions: OPT });
         const pr = node.parameters, P = { node };
         for (const k of ['rpm', 'load', 'cut']) Object.defineProperty(P, k, { set: (v) => pr.get(k).setTargetAtTime(v, ctx.currentTime, k === 'cut' ? 0.001 : 0.012) });
         useV6(node, P);
@@ -517,8 +519,16 @@ export class EngineAudio {
     crowdFilter.Q.value = 1.8;
     const crowdGain = this.crowdGain = ctx.createGain();
     crowdGain.gain.value = 0;
-    crowdNoise.connect(crowdFilter);
-    crowdFilter.connect(crowdGain);
+    // variante de ambiente a probar (?amb=b): el público como murmullo de voces (tres bandas de formantes que suben y
+    // bajan cada una a su aire) en vez de un solo ruido filtrado, y el viento a rachas
+    this.amb = new URLSearchParams(location.search).get('amb') || 'a';
+    if (this.amb === 'b') {
+      this.crowdBands = [[480, 2.2], [1150, 2.8], [2500, 3.2]].map(([f, q]) => {
+        const bp = ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = f; bp.Q.value = q;
+        const g = ctx.createGain(); g.gain.value = 0.6; crowdNoise.connect(bp); bp.connect(g); g.connect(crowdGain);
+        return { bp, g, f, k: 0.6, next: 0 };
+      });
+    } else crowdNoise.connect(crowdFilter), crowdFilter.connect(crowdGain);
     crowdGain.connect(master);
     crowdNoise.start();
 
@@ -635,12 +645,20 @@ export class EngineAudio {
     const rainVol = isPaused ? 0 : rainVal * (onboard ? 0.05 : 0.08);
     this.rainGain.gain.setTargetAtTime(rainVol, t, 0.3);
 
-    const crowdVol = isMuted ? 0 : (cam === 'track' ? 0.035 : 0.018);
+    const crowdVol = isMuted ? 0 : (cam === 'track' ? 0.035 : 0.018) * (this.amb === 'b' ? 1.6 : 1);
     this.crowdGain.gain.setTargetAtTime(crowdVol, t, 0.4);
+    // (amb b) cada banda del murmullo cambia de nivel y de tono poco a poco, sin ritmo fijo
+    if (this.crowdBands) for (const B of this.crowdBands) if (t > B.next) {
+      B.next = t + 0.25 + Math.random() * 0.9; B.k = 0.25 + Math.random() * 0.9;
+      B.g.gain.setTargetAtTime(B.k, t, 0.35); B.bp.frequency.setTargetAtTime(B.f * (0.9 + Math.random() * 0.2), t, 0.5);
+    }
 
     const carSpeed = car?.v ?? 0;
-    const windVol = isMuted ? 0 : (0.015 + Math.min(0.08, carSpeed / 300) * (onboard ? 0.7 : 0.4));
-    const windCutoff = 350 + Math.min(1200, carSpeed * 12);
+    // (amb b) rachas: una envolvente lenta y aleatoria que sube volumen y timbre a la vez
+    if (this.amb === 'b') { if (!this.gust || t > this.gust.next) this.gust = { k: 0.55 + Math.random() * 0.9, next: t + 1.5 + Math.random() * 3.5, v: this.gust?.v ?? 1 }; this.gust.v += (this.gust.k - this.gust.v) * 0.04; }
+    const gk = this.amb === 'b' ? this.gust.v : 1;
+    const windVol = isMuted ? 0 : (0.015 * gk + Math.min(0.08, carSpeed / 300) * (onboard ? 0.7 : 0.4));
+    const windCutoff = (350 + Math.min(1200, carSpeed * 12)) * (0.8 + 0.25 * gk);
     this.windGain.gain.setTargetAtTime(windVol, t, 0.1);
     this.windFilter.frequency.setTargetAtTime(windCutoff, t, 0.15);
 

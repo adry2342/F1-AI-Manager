@@ -8,7 +8,7 @@ class V6 extends AudioWorkletProcessor {
       { name: 'cut', defaultValue: 0, minValue: 0, maxValue: 1, automationRate: 'k-rate' },
     ];
   }
-  constructor() { super(); this.p = makeV6(sampleRate, 7); }
+  constructor(o) { super(); this.p = makeV6(sampleRate, 7, o?.processorOptions || {}); }
   process(inputs, outputs, P) {
     const o = outputs[0][0]; if (!o) return true;
     this.p(o, o.length, P.rpm[0], P.load[0], P.cut[0]);
