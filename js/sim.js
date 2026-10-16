@@ -10,7 +10,10 @@ const BRK = 0.67;           // fracción del agarre usable frenando
 // aceleración en 5ª, 6ª y 7ª (≈200-305 km/h): un 8 % menos de empuje (transiciones suaves)
 const sstep = (a, b, x) => { const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 // (desde 3.ª, a partir de ~130 km/h, un 7 % menos: empujaba demasiado en las marchas largas)
-export const gearPower = (v) => (1 - 0.08 * sstep(52, 57, v) * (1 - sstep(82, 87, v))) * (1 - 0.07 * sstep(34, 38, v));
+const gearPowerX = (v) => (1 - 0.08 * sstep(52, 57, v) * (1 - sstep(82, 87, v))) * (1 - 0.07 * sstep(34, 38, v));
+// (atajos para los tramos planos: mismos números exactos, sin las tres sstep en cada muestra del modelo del piloto)
+const GP_HI = gearPowerX(45), GP_MID = gearPowerX(70);
+export const gearPower = (v) => (v <= 34 ? 1 : v >= 38 && v <= 52 ? GP_HI : v >= 57 && v <= 82 ? GP_MID : v >= 87 ? GP_HI : gearPowerX(v));
 const TRAC = 0.58;          // fracción del agarre usable acelerando
 const LIMN = HALF_W - CAR_HALF - 0.25; // límite lateral de los nodos de trazada (donde la pista es estrecha, menos: clampN)
 const CP_STEP = 50;         // checkpoints de cronometraje
@@ -1757,9 +1760,11 @@ export class Sim {
     // agarre que cree tener en cada muestra de la ventana
     const MUA = this.mMu || (this.mMu = new Float64Array(N));
     const muZ = car.muPlan * this.commitAt(car, z), mu0 = car.muPlan, commit = car.kb.commit;
-    for (let q = 0; q < wl; q++) { const i = (w0 + q) % N, zz = zoneOf[i]; MUA[i] = zz === z ? muZ : zz < 0 ? mu0 : mu0 * commit[zz]; }
-    // sabe que en las rectas de DRS irá con el alerón abierto (menos carga)
-    for (let q = 0; q < wl; q++) { const i = (w0 + q) % N; V[i] = vCorner(K[i], MUA[i], inDRS[i] ? aero * 0.8 : aero); }
+    // (y sabe que en las rectas de DRS irá con el alerón abierto: menos carga)
+    for (let q = 0; q < wl; q++) {
+      const i = (w0 + q) % N, zz = zoneOf[i], mu = MUA[i] = zz === z ? muZ : zz < 0 ? mu0 : mu0 * commit[zz];
+      V[i] = vCorner(K[i], mu, inDRS[i] ? aero * 0.8 : aero);
+    }
     // frenada hacia atrás desde la salida de la ventana (con la elipse de agarre)
     let vn = car.vprof[(w0 + wl) % N];
     for (let q = wl - 1; q >= 0; q--) {

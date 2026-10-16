@@ -61,7 +61,7 @@ export function lineGeometry(T, line, kOut, lenOut, i0 = 0, cnt = T.N) {
   if (!PX || PX.length !== N) { PX = new Float64Array(N); PZ = new Float64Array(N); KT = new Float64Array(N); SL = new Float64Array(N); }
   const full = cnt >= N;
   const a0 = full ? 0 : i0 - 14, a1 = full ? N : i0 + cnt + 14;
-  const md = (q) => (q % N + N) % N;
+  const md = (q) => (q < 0 ? (q % N + N) % N : q < N ? q : q % N);
   const x = T.x, z = T.z, lx = T.lx, lz = T.lz;
   for (let q = a0; q < a1; q++) { const i = md(q), L = line[i]; PX[i] = x[i] + lx[i] * L; PZ[i] = z[i] + lz[i] * L; }
   const c1 = full ? a1 : a1 - h;

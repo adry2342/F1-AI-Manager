@@ -205,10 +205,11 @@ async function main(choice) {
         const bar = document.querySelector('#skipBar i'); if (bar) bar.style.width = `${Math.min(100, prog * 100)}%`;
       }
     } else if (app.skipping && sim.session && !sim.session.done) {
-      // misma simulación que viéndola (paso de 1/60 s), pero casi todo el tiempo para simular: solo se dibuja 1 de cada 4 fotogramas
+      // misma simulación que viéndola (paso de 1/60 s), pero casi todo el tiempo para simular: tandas de 150 ms y solo se
+      // dibuja 1 de cada 3 (~2 imágenes por segundo; con 70 ms y 1 de 4 se iba un 12 % en dibujar)
       const t0 = performance.now();
-      while (performance.now() - t0 < 70 && !sim.session.done) for (let k = 0; k < 30; k++) app.stepOnce();
-      skipFrame = (skipFrame + 1) % 4;
+      while (performance.now() - t0 < 150 && !sim.session.done) for (let k = 0; k < 30; k++) app.stepOnce();
+      skipFrame = (skipFrame + 1) % 3;
       const ss = sim.session;
       const prog = ss.id === 'RACE' ? (sim.raceOrder?.[0]?.lap ?? 0) / sim.raceLaps : sim.t / (ss.dur + 60);
       const bar = document.querySelector('#skipBar i'); if (bar) bar.style.width = `${Math.min(100, prog * 100)}%`;
