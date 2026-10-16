@@ -727,7 +727,10 @@ body.portrait #radio { left: 8px !important; top: auto !important; bottom: calc(
 body.portrait #mgrAl { left: 8px; right: 8px; width: auto; top: auto; bottom: calc(100vh - var(--cvh) + 8px); max-height: calc(var(--cvh) - 60px); background: rgba(20,20,23,0.94); box-shadow: 0 10px 40px rgba(0,0,0,0.6); }
 body.portrait #mgrAl .al .row button { padding: 9px 3px; font-size: 13px; }
 body.portrait #nextBar { bottom: calc(var(--ctlh) + 10px); flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 16px); border-radius: 24px; padding: 8px; }
-body.portrait #replayBar { flex-wrap: wrap; justify-content: center; max-width: calc(100vw - 16px); border-radius: 24px; top: 8px; }
+body.portrait #replayBar { flex-wrap: wrap; justify-content: center; gap: 6px 8px; width: max-content; max-width: calc(100vw - 16px); border-radius: 24px; top: 8px; padding: 6px; }
+body.portrait #replayBar .prog { width: 70px; } body.portrait #replayBar .who { font-size: 14px; } body.portrait #replayBar button { padding: 6px 10px; }
+body.portrait.replay #feed, body.portrait.replay #sessionBar, body.portrait.replay #wx { visibility: hidden; }
+body.portrait #wipe .b span { font-size: clamp(22px, 8vw, 44px); gap: 10px; } body.portrait #wipe .b em { font-size: clamp(14px, 4.5vw, 22px); padding: 6px 12px; }
 body.portrait #mpBar { left: 8px; right: auto; top: 52px; width: min(46vw, 200px); }
 body.portrait #mpVote { top: 60px; width: calc(100vw - 16px); flex-wrap: wrap; }
 body.portrait #skipBar { top: calc(var(--cvh) / 2); }
@@ -748,6 +751,9 @@ body.portrait .learn-grid, body.portrait .grid2 { grid-template-columns: 1fr; }
 body.portrait .mgrSum .scards { grid-template-columns: 1fr; }
 body.portrait .start { grid-template-columns: 1fr; padding: 20px 16px; gap: 10px; } body.portrait .tcards { grid-template-columns: 1fr; }
 body.portrait .start .sched { grid-template-columns: 1fr; } body.portrait .sheet.startSheet { height: auto; min-height: 100%; }
+body.portrait .start .teams { grid-template-columns: repeat(auto-fill, minmax(108px, 1fr)); }
+/* en táctil no hay teclado: fuera la chuleta de teclas */
+@media (pointer: coarse) { .start .keys, .pause .keys { display: none; } }
 /* vertical ancho (pantalla dividida, tableta): los tiempos siempre a la izquierda y las pestañas para el resto */
 @media (min-width: 700px) {
   body.portrait #tower { display: block; right: auto; width: calc(44% - 12px); }

@@ -481,7 +481,7 @@ export function tyreSide(color, blur = false) {
     g.beginPath(); g.arc(256, 256, 222, 0, Math.PI * 2); g.stroke();
 
     // Filetes de acento interior y exterior de la banda
-    g.strokeStyle = 'rgba(255,255,255,0.7)'; g.lineWidth = 2;
+    g.strokeStyle = 'rgba(255,255,255,0.4)'; g.lineWidth = 2;
     g.beginPath(); g.arc(256, 256, 233, 0, Math.PI * 2); g.stroke();
     g.beginPath(); g.arc(256, 256, 211, 0, Math.PI * 2); g.stroke();
 
@@ -490,8 +490,9 @@ export function tyreSide(color, blur = false) {
     g.beginPath(); g.arc(256, 256, 175, 0, Math.PI * 2); g.stroke();
 
     if (blur) {
-      g.strokeStyle = 'rgba(240,240,240,0.16)'; g.lineWidth = 26;
-      g.beginPath(); g.arc(256, 256, 222, 0, Math.PI * 2); g.stroke();
+      // (girando: la banda se emborrona con su propio color; con blanco encima el rojo se volvía rosa)
+      g.globalAlpha = 0.55; g.strokeStyle = color; g.lineWidth = 30;
+      g.beginPath(); g.arc(256, 256, 222, 0, Math.PI * 2); g.stroke(); g.globalAlpha = 1;
     } else {
       g.fillStyle = '#f5f5f7'; g.font = '900 24px "Titillium Web", Arial, sans-serif';
       g.textAlign = 'center'; g.textBaseline = 'middle';

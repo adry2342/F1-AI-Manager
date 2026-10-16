@@ -8,10 +8,13 @@ Hecho y probado (e2e 57/57 y 72/72):
 - Vertical (móvil de pie o pantalla dividida): 3D arriba y pestañas Muro / Tiempos / Piloto / Mapa + menú ☰; en ancho, tiempos fijos a la izquierda.
 - Banda de compuesto de las ruedas del coche más ancha y con brillo propio.
 
+Revisado después (17/10, noche):
+- Ruedas: la banda roja salía rosa con la rueda girando (capa blanca del desenfoque); ahora se emborrona con su color y brilla menos. Comprobado de lado, de día, al atardecer y de noche.
+- Vertical: portada (los tres modos), pausa, repetición, cortinilla y radio revisados; equipos en rejilla flexible, sin la chuleta de teclas en táctil.
+
 Queda:
-- Mirar la foto de las ruedas (`scratchpad/tyres.jpg`) y decidir si basta.
-- Revisar en vertical: portada, pausa, multijugador (sala y votaciones), repetición y radio.
 - Que lo pruebe él en el móvil de verdad.
+- Multijugador en vertical (barra de jugadores, votaciones) sin probar con dos personas.
 
 ## Decidido (17/10)
 - Visibilidad C por defecto (D cuesta un 18 % de FPS en gp y se ve casi igual). `?look=a` vuelve a la de antes.
