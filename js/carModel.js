@@ -499,7 +499,7 @@ const WHEEL_BTN = [[-0.07, 0.02, 0], [-0.07, -0.004, 2], [-0.07, -0.028, 3], [0.
 const BTN_MAT = [0xe53935, 0x43a047, 0xfdd835, 0x1e88e5].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.5 }));
 export const CAM_MOUNTS = {
   cockpit: { pos: [0, 0.80, 0.14], look: [0, 0.68, 6] },
-  tcam: { pos: [0, 1.16, -0.58], look: [0, 0.72, 8] },
+  tcam: { pos: [0, 1.32, -0.42], look: [0, 0.3, 8] },
   nose: { pos: [0.0, 0.50, 2.65], look: [0, 0.40, 10] },
   rear: { pos: [0.0, 1.05, -0.50], look: [0, 0.60, -8] },
 };
