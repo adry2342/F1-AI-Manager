@@ -117,8 +117,9 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     grass: new THREE.MeshStandardMaterial({ map: night ? TX.sand() : TX.grass(), roughness: 1 }),
     gravel: new THREE.MeshStandardMaterial({ map: TX.gravel(), roughness: 1 }),
     paint: new THREE.MeshStandardMaterial({ map: TX.runoffPaint(), roughness: 0.9 }),
-    wall: new THREE.MeshStandardMaterial({ map: TX.sponsorBoard(3, 64), roughness: 0.6, side: THREE.DoubleSide }),
-    wall2: new THREE.MeshStandardMaterial({ map: TX.sponsorBoard(8, 64), roughness: 0.6, side: THREE.DoubleSide }),
+    // (una cara por lado: con DoubleSide la de atrás salía reflejada y desde la grada los carteles se leían al revés)
+    wall: new THREE.MeshStandardMaterial({ map: TX.sponsorBoard(3, 64), roughness: 0.6 }),
+    wall2: new THREE.MeshStandardMaterial({ map: TX.sponsorBoard(8, 64), roughness: 0.6 }),
     concrete: new THREE.MeshStandardMaterial({ map: TX.concreteWall(), roughness: 0.9, side: THREE.DoubleSide }),
     tecpro: new THREE.MeshStandardMaterial({ map: TX.tecpro(), roughness: 0.7 }),
     fence: new THREE.MeshStandardMaterial({ map: TX.fence(), transparent: true, alphaTest: 0.35, side: THREE.DoubleSide, roughness: 0.5, metalness: 0.6 }),
@@ -375,7 +376,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   {
     for (const side of [1, -1]) {
       const B = side > 0 ? BLs : BRs, tp = side > 0 ? typeL : typeR;
-      const wall = new Ribbon(), top = new Ribbon(), fence = new Ribbon(), tec = new Ribbon();
+      const wall = new Ribbon(), wallB = new Ribbon(), top = new Ribbon(), fence = new Ribbon(), tec = new Ribbon();
       const posts = [];
       for (let i = 0; i < M; i++) {
         if (tp[i] === 3 || tp[(i + 1) % M] === 3) continue;
@@ -390,9 +391,10 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
           tec.quad(q0, q1, pos(s1, d1, 1.0), pos(s0, d0, 1.0), [[s0 / 4, 0], [s1 / 4, 0], [s1 / 4, 0.2], [s0 / 4, 0.2]]);
         }
         addWall(g0[0], g0[2], g0[1], g1[0], g1[2], g1[1], 4.5);
-        const f = side > 0 ? [g0, g1, t1, t0] : [g1, g0, t0, t1];
-        const us = side > 0 ? [[s0 / 24, 0], [s1 / 24, 0], [s1 / 24, 1], [s0 / 24, 1]] : [[-s1 / 24, 0], [-s0 / 24, 0], [-s0 / 24, 1], [-s1 / 24, 1]];
-        wall.quad(...f, us);
+        // cara hacia la pista y cara hacia fuera, cada una con el texto al derecho visto desde su lado
+        const fA = [g0, g1, t1, t0], uA = [[s0 / 24, 0], [s1 / 24, 0], [s1 / 24, 1], [s0 / 24, 1]];
+        const fB = [g1, g0, t0, t1], uB = [[-s1 / 24, 0], [-s0 / 24, 0], [-s0 / 24, 1], [-s1 / 24, 1]];
+        if (side > 0) { wall.quad(...fA, uA); wallB.quad(...fB, uB); } else { wall.quad(...fB, uB); wallB.quad(...fA, uA); }
         const h0 = pos(s0, d0 + side * 0.4, 1.2), h1 = pos(s1, d1 + side * 0.4, 1.2);
         top.quad(t0, t1, h1, h0);
         const b0 = pos(s0, d0 + side * 0.3, 1.2), b1 = pos(s1, d1 + side * 0.3, 1.2), u0 = pos(s0, d0 + side * 0.3, 4.2), u1 = pos(s1, d1 + side * 0.3, 4.2);
@@ -400,6 +402,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
         if (i % 3 === 0) posts.push(pos(s0, d0 + side * 0.35, 0));
       }
       const wm = new THREE.Mesh(wall.geo(), side > 0 ? mat.wall : mat.wall2); wm.receiveShadow = true; wm.castShadow = true; scene.add(wm);
+      const wb = new THREE.Mesh(wallB.geo(), side > 0 ? mat.wall : mat.wall2); wb.receiveShadow = true; scene.add(wb);
       scene.add(new THREE.Mesh(top.geo(), mat.concrete));
       const tm = new THREE.Mesh(tec.geo(), mat.tecpro); tm.castShadow = true; scene.add(tm);
       scene.add(new THREE.Mesh(fence.geo(), mat.fence));
