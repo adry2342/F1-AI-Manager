@@ -64,7 +64,9 @@ export const CIRCUITS = {
   night: { id: 'night', name: 'Al Noor', place: 'Desierto · carrera de noche', night: true, poly: DESERT, elev: 0.7 },
   mount: { id: 'mount', name: 'Monte Alto', place: 'Montaña · al atardecer', sunset: true, poly: MOUNT, elev: 2.4 },
   forest: { id: 'forest', name: "Val d'Ambre", place: 'Bosque en otoño · nublado', autumn: true, poly: FOREST, yProf: FOREST_Y, pitK: 0.72, cornerKerbs: true,
-    narrow: [[1250, 1640, 6.2], [3480, 4040, 6.5]] },   // estrecha en Eau Rouge-Les Combes y en Stavelot
+    narrow: [[1250, 1640, 6.2], [3480, 4040, 6.5]],    // estrecha en Eau Rouge-Les Combes y en Stavelot
+    // donde más se salían y golpeaban (medido): más escapatoria (de grava: con asfalto llegaban más rápido al muro)
+    runoff: [[4, 10], [6, 9], [8, 10], [13, 8], [16, 8], [17, 9], [18, 9], [20, 10], [22, 14]] },
 };
 
 // Polígono con esquinas redondeadas -> puntos de control densos (arcos cada ~8 m, rectas cada ~60 m)
@@ -428,6 +430,18 @@ function buildRunoff(T) {
     BL[i] = W + (outside === 1 ? wOut : wIn);
     BR[i] = W + (outside === -1 ? wOut : wIn);
     typeL[i] = outside === 1 ? tOut : tIn; typeR[i] = outside === -1 ? tOut : tIn;
+  }
+  // escapatorias más grandes por fuera de algunas curvas (meta.runoff: [curva, metros de más, tipo]): desde un poco antes de
+  // la entrada hasta ~170 m después de la salida, que es donde se abren los que se pasan (tipo 2: asfalto, no se atascan)
+  for (const [cn, extra, ty] of T.meta.runoff || []) {
+    const c = T.corners[cn - 1]; if (!c) continue;
+    const arr = c.dir > 0 ? BR : BL, types = c.dir > 0 ? typeR : typeL;
+    const a = T.wrap(c.sIn - 40), span = T.ahead(a, c.sOut) + 170;
+    for (let i = 0; i < M; i++) {
+      const u = T.ahead(a, i * STEP); if (u > span) continue;
+      const w = Math.min(1, u / 40, (span - u) / 60);
+      arr[i] += extra * w; if (ty != null && w > 0.3) types[i] = ty;
+    }
   }
   // no invadir otras partes del circuito: limitar por distancia a muestras lejanas
   const cell = 40, grid = new Map();

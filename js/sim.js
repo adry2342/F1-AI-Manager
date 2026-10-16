@@ -1254,7 +1254,9 @@ export class Sim {
     } else {
       car.vs = 0;
       // parado: en la grava puede quedarse atascado; si no, gira el coche y vuelve
-      if (m.stuck == null) m.stuck = surf === 1 && this.rng() < 0.3;
+      // (solo si se para metido en la grava, y no tantos: con un 30 % de los trompos que acababan en grava se quedaban
+      // muchos más que en la F1 de verdad)
+      if (m.stuck == null) m.stuck = surf === 1 && Math.abs(car.d) > T.hwAt(car.s) + 5 && this.rng() < 0.12;
       if (m.stuck && m.t - m.stopT > 2) { this.retire(car, 'atascado en la grava'); car.mistake = null; return; }
       const k = Math.min(1, DT * 1.6);
       const goal = Math.round(m.rot / (2 * Math.PI)) * 2 * Math.PI;
