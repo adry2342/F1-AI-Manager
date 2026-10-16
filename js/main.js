@@ -181,6 +181,8 @@ async function main(choice) {
     // giro de rueda: por encima de ~1/4 de vuelta por fotograma se ve estroboscópico -> se limita
     const spin = Math.min((car.v * dt) / 0.36, 0.9);
     for (const w of V.wheels) { w.spin.rotation.x += spin; if (w.front) w.steer.rotation.y = THREE.MathUtils.clamp(V.visSteer * 0.5, -0.38, 0.38); }
+    // volante: unas 6 veces el ángulo de las ruedas (hasta ~130°), con el contravolante de las derrapadas
+    if (V.swheel && V.detailed) V.swheel.rotation.z = THREE.MathUtils.clamp(-V.visSteer * 3, -2.3, 2.3);
     for (const w of V.loWheels) w.rotation.x += spin;
     V.flap.rotation.x += ((car.drs ? -0.55 : 0) - V.flap.rotation.x) * Math.min(1, dt * 12);
     // luz trasera: parpadea en el pit lane, con VSC o despacio; con pista mojada, encendida siempre

@@ -348,11 +348,22 @@ export function buildCar(team, drv) {
   const harness = add(hi, g('harness', () => box(0.28, 0.165, 0.225)), M.c2);
   harness.position.set(0, 0.60, 0.02);
 
-  // Volante tipo mariposa (butterfly yoke) con empuñaduras, botones y pantalla LCD activa
-  const wheel = add(hi, g('swheel', () => box(0.21, 0.095, 0.028)), M.black);
-  wheel.position.set(0, 0.60, 0.36); wheel.rotation.x = -0.42;
-  const scr = add(hi, g('scr', () => new THREE.PlaneGeometry(0.088, 0.044)), M.screen, false);
-  scr.position.set(0, 0.605, 0.348); scr.rotation.x = -0.42 + Math.PI; scr.rotation.y = Math.PI;
+  // Volante tipo mariposa (butterfly yoke) con empuñaduras, botones, luces de cambio y pantalla; gira con la dirección
+  // (swheel.rotation.z, ver place en main.js). Columna inclinada; el giro es en su plano
+  const column = new THREE.Group(); column.position.set(0, 0.685, 0.5); column.rotation.x = -0.5; hi.add(column);
+  const swheel = new THREE.Group(); column.add(swheel);
+  add(swheel, g('swheel', () => box(0.21, 0.085, 0.028)), M.black);
+  for (const sd of [1, -1]) {
+    const grip = add(swheel, g('swGrip', () => { const c = new THREE.CylinderGeometry(0.019, 0.017, 0.12, 10); return c; }), M.rubber);
+    grip.position.set(sd * 0.118, -0.012, 0); grip.rotation.z = sd * 0.18;
+    const glove = add(swheel, g('swGlove', () => new THREE.SphereGeometry(0.022, 10, 8)), M.c2, false);
+    glove.position.set(sd * 0.12, -0.004, -0.016); glove.scale.set(0.85, 1.35, 0.7);
+  }
+  const scr = add(swheel, g('scr', () => new THREE.PlaneGeometry(0.088, 0.044)), M.screen, false);
+  scr.position.set(0, 0.006, -0.0145); scr.rotation.y = Math.PI;
+  // botones de colores y la fila de luces de cambio encima de la pantalla
+  WHEEL_BTN.forEach(([x, y, k]) => { const b = add(swheel, g('swBtn', () => box(0.012, 0.012, 0.006)), BTN_MAT[k], false); b.position.set(x, y, -0.016); });
+  for (let k = 0; k < 9; k++) { const l = add(swheel, g('swLed', () => box(0.006, 0.005, 0.004)), BTN_MAT[k < 3 ? 1 : k < 6 ? 0 : 2], false); l.position.set((k - 4) * 0.0095, 0.036, -0.0155); }
 
   // Retrovisores aerodinámicos con doble soporte (stalk + flow conditioner al pontón)
   for (const sd of [1, -1]) {
@@ -469,7 +480,7 @@ export function buildCar(team, drv) {
   }
 
   const car = {
-    root, body, lod, hi, lo, detailed: true, wheels, loWheels, flap: flapPivot, rain, fw, rw, fwLo, rwLo, M, compound: 'M', fast: false,
+    root, body, lod, hi, lo, detailed: true, wheels, loWheels, flap: flapPivot, rain, fw, rw, fwLo, rwLo, M, compound: 'M', fast: false, swheel,
     setCompound(c, fast = false) {
       if (c === this.compound && fast === this.fast) return;
       this.compound = c; this.fast = fast;
@@ -481,6 +492,9 @@ export function buildCar(team, drv) {
 }
 
 // Cámara on-board: posiciones locales
+// botones del volante (x, y, color) y sus materiales (comunes a todos los coches)
+const WHEEL_BTN = [[-0.07, 0.02, 0], [-0.07, -0.004, 2], [-0.07, -0.028, 3], [0.07, 0.02, 1], [0.07, -0.004, 3], [0.07, -0.028, 0], [-0.03, -0.034, 2], [0.03, -0.034, 1]];
+const BTN_MAT = [0xe53935, 0x43a047, 0xfdd835, 0x1e88e5].map((c) => new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: 0.35, roughness: 0.5 }));
 export const CAM_MOUNTS = {
   cockpit: { pos: [0, 0.80, 0.14], look: [0, 0.68, 6] },
   tcam: { pos: [0, 1.16, -0.58], look: [0, 0.72, 8] },

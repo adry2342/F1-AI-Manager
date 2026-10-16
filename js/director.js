@@ -425,7 +425,7 @@ export class Director {
       const car = chaser ? F.a : F.b, q = Math.random();
       // preferencia: T-cam, pista y, en el de delante, la trasera (que enseña al que le persigue)
       const type = chaser ? (q < 0.45 ? 'tcam' : q < 0.85 ? 'track' : q < 0.93 ? 'cockpit' : 'chase')
-        : (q < 0.45 ? (F.gap < 1.5 ? 'rear' : 'track') : q < 0.8 ? 'track' : 'tcam');
+        : (q < 0.55 ? (F.gap < 1.2 ? 'rear' : 'track') : q < 0.85 ? 'track' : 'tcam');
       this.focus = car; this.first = true; this.trackCam = null; this.type = type === this.type && type !== 'track' ? 'track' : type;
       this.shotT = 0; this.shotLen = 6 + Math.random() * 5; this.holdFocus = 8; this.reason = 'battle'; this.lastCut = performance.now();
       this.changed();
@@ -475,10 +475,12 @@ export class Director {
   }
 
   // ¿hay alguien pegado detrás? (entonces la trasera de este coche enseña algo)
-  chasedBy(car) {
-    const T = this.T;
-    for (const o of this.sim.cars) if (o !== car && o.state === 'track' && !o.inPit && !o.retired) { const g = T.rel(o.s, car.s); if (g > 3 && g < 45) return true; }
-    return false;
+  chasedBy(car, maxG = 45) { return !!this.chaser(car, maxG); }
+  // el coche que va justo detrás (a menos de maxG metros), para la cámara trasera
+  chaser(car, maxG = 45) {
+    const T = this.T; let best = null, bg = maxG;
+    for (const o of this.sim.cars) if (o !== car && o.state === 'track' && !o.inPit && !o.retired) { const g = T.rel(o.s, car.s); if (g > 3 && g < bg) { bg = g; best = o; } }
+    return best;
   }
 
   // preferencia de planos: T-cam y pista sobre todo; la trasera, solo en el coche de delante (con uno pegado detrás)
@@ -489,12 +491,12 @@ export class Director {
     let t;
     if (this.sim.session?.id === 'RACE' && ['grid', 'lights'].includes(this.sim.session.phase)) return 'heli';
     if (this.sim.session?.id === 'RACE' && this.sim.t - (this.sim.raceStart ?? 0) < 12) return 'heli';
-    const rear = this.chasedBy(this.focus);
+    const rear = this.chasedBy(this.focus, 30);   // (trasera: solo con uno bien pegado, que se vea grande)
     if (has('pit')) t = 'track';
     else if (has('mistake') || has('crash') || has('event')) t = r < 0.65 ? 'track' : 'heli';
-    else if (has('side') || has('battle')) t = rear && r < 0.35 ? 'rear' : r < 0.65 ? 'tcam' : r < 0.92 ? 'track' : 'cockpit';
+    else if (has('side') || has('battle')) t = rear && r < 0.45 ? 'rear' : r < 0.7 ? 'tcam' : r < 0.93 ? 'track' : 'cockpit';
     else if (has('purple') || has('lap')) t = r < 0.45 ? 'tcam' : r < 0.82 ? 'track' : r < 0.92 ? 'cockpit' : 'chase';
-    else t = rear && r < 0.25 ? 'rear' : r < 0.55 ? 'track' : r < 0.85 ? 'tcam' : r < 0.92 ? 'chase' : r < 0.96 ? 'cockpit' : 'heli';
+    else t = rear && r < 0.35 ? 'rear' : r < 0.55 ? 'track' : r < 0.85 ? 'tcam' : r < 0.92 ? 'chase' : r < 0.96 ? 'cockpit' : 'heli';
     if (t === avoid && t !== 'track') t = avoid === 'tcam' ? 'track' : 'tcam';
     if (t === 'rear' && !rear) t = 'tcam';
     return t;
@@ -503,6 +505,8 @@ export class Director {
   direct(dt) {
     this.shotT += dt; this.holdFocus -= dt;
     this._acc = (this._acc || 0) + dt; if (this._acc < 0.4) return; this._acc = 0;
+    // trasera sin nadie detrás (se ha quedado o ya ha pasado): fuera, no tiene gracia
+    if (this.type === 'rear' && this.shotT > 1.2 && !this.chaser(this.focus, 60)) this.shotT = Math.max(this.shotT, this.shotLen + 1);
     // auto fijo en un piloto: solo cambia de plano
     if (this.lockFocus) {
       if (this.shotT > this.shotLen || (this.focus.mistake?.type === 'spin' && this.type !== 'track' && this.type !== 'heli' && this.shotT > 1.5)) {
@@ -603,6 +607,15 @@ export class Director {
         const shake = this.focus.v * 0.00004 * (this.type === 'nose' ? 3 : 1);
         cam.position.x += (Math.random() - 0.5) * shake; cam.position.y += (Math.random() - 0.5) * shake;
         v2.set(...m.look).applyMatrix4(bodyM);
+        // trasera: mira un poco hacia el que persigue (en curva se salía por un lado del plano)
+        if (this.type === 'rear') {
+          const ch = this.chaser(this.focus, 70), cv = ch && this.vis[ch.i]?.root.position;
+          const aim = this.rearTmp || (this.rearTmp = new THREE.Vector3());
+          aim.copy(v2); if (cv) aim.lerp(v3.copy(cv).setY(cv.y + 0.5), 0.45);
+          if (!this.rearAim || this.first) this.rearAim = aim.clone();
+          this.rearAim.lerp(aim, 1 - Math.exp(-dt * 4));
+          v2.copy(this.rearAim);
+        }
         cam.up.set(0, 1, 0).applyQuaternion(V.body.getWorldQuaternion(new THREE.Quaternion()));
         cam.lookAt(v2); fov = this.type === 'cockpit' ? 74 : this.type === 'rear' ? 55 : 68; break;
       }
@@ -644,14 +657,15 @@ export class Director {
         if (this.droneLosT <= 0) { this.droneLosT = 0.2; this.droneBlocked = this.world.losBlocked(cam.position, v3.copy(carPos).setY(carPos.y + 0.8)) || this.sceneBlocked(carPos, cam.position); }
         this.droneLift = Math.max(0, Math.min(30, this.droneLift + (this.droneBlocked ? 14 : -3) * dt));
         this.droneAngle += this.droneDir * dt * (this.droneBlocked ? 4 : 1);
-        const dist = 24 + 6 * Math.sin(this.droneT * 0.35);
-        const h = Math.max(3, 13 + 5 * Math.sin(this.droneT * 0.25 + 1.0) + this.droneLift);
+        // (más abierto que antes, 24 m y 13 m de alto: se ve el coche con la curva y los de alrededor)
+        const dist = 40 + 9 * Math.sin(this.droneT * 0.35);
+        const h = Math.max(4, 22 + 7 * Math.sin(this.droneT * 0.25 + 1.0) + this.droneLift);
         cam.position.set(carPos.x + Math.sin(this.droneAngle) * dist, carPos.y + h, carPos.z + Math.cos(this.droneAngle) * dist);
         // mira al coche sin retraso (con retraso, a 300 km/h o con la sim acelerada, el coche se salía del plano)
         this.smoothLook.copy(carPos).addScaledVector(fwd, 4); this.smoothLook.y += 0.6;
         cam.up.set(0, 1, 0);
         cam.lookAt(this.smoothLook);
-        fov = 50;
+        fov = 54;
         break;
       }
       case 'track': {
