@@ -4,7 +4,7 @@
 // Salen con la tecla R / botón, y solas tras un accidente, un trompo arriba o un adelantamiento por el podio.
 const NUM = ['s', 'd', 'dPrev', 'vs', 'v', 'yaw', 'steer', 'slide', 'pitch', 'roll', 'lock', 'beta', 'gear', 'rpm', 'throttle', 'brake'];
 const STATES = ['track', 'grid', 'garage'], PHASES = ['', 'in', 'stop', 'out', 'box'], TYRES = ['S', 'M', 'H', 'I', 'W'];
-const F = NUM.length + 7;           // + drs, state, inPit, pitPhase, spin, out, tyre
+const F = NUM.length + 10;          // + drs, state, inPit, pitPhase, spin, out, tyre y las tres piezas (alerones, suspensión)
 const HZ_MAX = 40, KEEP = 90;       // como mucho 40 fotos por segundo de sim; 90 s
 
 export class Replay {
@@ -13,6 +13,7 @@ export class Replay {
     this.n = sim.cars.length; this.cap = HZ_MAX * KEEP;
     this.buf = new Float32Array(this.cap * this.n * F); this.ts = new Float64Array(this.cap);
     this.head = 0; this.count = 0; this.sess = null;
+    this.evs = [];                    // trozos y chispas de los choques grabados: se vuelven a lanzar al repetirlos
     this.active = false; this.auto = true; this.pending = null; this.lastAuto = -1e9;
     const bar = this.bar = document.createElement('div'); bar.id = 'replayBar';
     document.getElementById('hud').appendChild(bar);
@@ -39,7 +40,7 @@ export class Replay {
   // --- grabación
   record() {
     const sim = this.sim, ss = sim.session; if (!ss) return;
-    if (ss !== this.sess) { this.sess = ss; this.count = 0; this.pending = null; }
+    if (ss !== this.sess) { this.sess = ss; this.count = 0; this.pending = null; this.evs = []; }
     const t = sim.t;
     if (this.count && t - this.ts[(this.head - 1 + this.cap) % this.cap] < 1 / HZ_MAX - 1e-6) return;
     const k = this.head, base = k * this.n * F, B = this.buf;
@@ -49,6 +50,7 @@ export class Replay {
       B[o++] = c.drs ? 1 : 0; B[o++] = Math.max(0, STATES.indexOf(c.state)); B[o++] = c.inPit ? 1 : 0;
       B[o++] = Math.max(0, PHASES.indexOf(c.pitPhase || '')); B[o++] = c.mistake?.type === 'spin' ? 1 : 0; B[o++] = c.out || c.retired ? 1 : 0;
       B[o++] = Math.max(0, TYRES.indexOf(c.tyre.c));
+      const P = c.parts; B[o++] = P?.fw || 0; B[o++] = P?.rw || 0; B[o++] = P?.susp || 0;
     });
     this.ts[k] = t; this.head = (k + 1) % this.cap; this.count = Math.min(this.cap, this.count + 1);
   }
@@ -66,6 +68,10 @@ export class Replay {
   // --- repeticiones automáticas
   onEvent(e) {
     const sim = this.sim, race = sim.session?.id === 'RACE';
+    if (!this.active && !this.app.skipping && (e.type === 'debris' || e.type === 'contact')) {
+      this.evs.push({ ...e, t: sim.t });
+      while (this.evs.length && this.evs[0].t < sim.t - KEEP) this.evs.shift();
+    }
     if (!this.auto || this.active || !e.car) return;
     let big = false;
     if (e.type === 'retire' && e.why === 'accidente') big = true;
@@ -88,7 +94,7 @@ export class Replay {
   begin(car, t0, t1, why) {
     if (this.active) return;
     const D = this.dir;
-    this.saved = this.sim.cars.map((c) => { const o = {}; for (const f of NUM) o[f] = c[f]; Object.assign(o, { drs: c.drs, state: c.state, inPit: c.inPit, pitPhase: c.pitPhase, mistake: c.mistake, out: c.out, tc: c.tyre.c }); return o; });
+    this.saved = this.sim.cars.map((c) => { const o = {}; for (const f of NUM) o[f] = c[f]; Object.assign(o, { drs: c.drs, state: c.state, inPit: c.inPit, pitPhase: c.pitPhase, mistake: c.mistake, out: c.out, tc: c.tyre.c, parts: c.parts }); return o; });
     this.savedDir = { auto: D.auto, type: D.type, focus: D.focus };
     this.active = true; this.t = t0; this.t0 = t0; this.t1 = t1; this.car = car; this.rate = 1; this.why = why;
     this.shot = -1; this.shotT = 0; this.shots = ['track', 'chase', 'heli', 'track', 'tcam'];
@@ -107,7 +113,7 @@ export class Replay {
     this.sim.cars.forEach((c, i) => {
       const o = this.saved[i];
       for (const f of NUM) c[f] = o[f];
-      c.drs = o.drs; c.state = o.state; c.inPit = o.inPit; c.pitPhase = o.pitPhase; c.mistake = o.mistake; c.out = o.out; c.tyre.c = o.tc;
+      c.drs = o.drs; c.state = o.state; c.inPit = o.inPit; c.pitPhase = o.pitPhase; c.mistake = o.mistake; c.out = o.out; c.tyre.c = o.tc; c.parts = o.parts;
     });
     const D = this.dir, S = this.savedDir;
     // (setFocus sin «manual»: con él se apagaba el auto y la realización no volvía tras la repetición)
@@ -134,7 +140,10 @@ export class Replay {
       }
       if (!this.active) return false;
     }
+    const tPrev = this.t;
     this.t += dt * this.rate;
+    // trozos y chispas de lo que pasa en este tramo de la repetición
+    for (const e of this.evs) if (e.t > tPrev && e.t <= this.t) this.app.fx?.replayEvent(e);
     if (this.t >= this.t1) { this.stop(); return this.active; }   // (tras la cortinilla)
     // cambio de plano cada ~3 s
     this.shotT -= dt;
@@ -150,6 +159,7 @@ export class Replay {
       }
       c.drs = B[a++] > 0.5; c.state = STATES[B[a++]]; c.inPit = B[a++] > 0.5; c.pitPhase = PHASES[B[a++]] || null;
       c.mistake = B[a++] > 0.5 ? { type: 'spin', t: 0, slow: 1 } : null; c.out = B[a++] > 0.5; c.tyre.c = TYRES[B[a++]] || c.tyre.c;
+      c.parts = { fw: B[a++], rw: B[a++], susp: B[a++] };
     });
     const pr = this.bar.querySelector('.prog i'); if (pr) pr.style.width = `${((this.t - this.t0) / (this.t1 - this.t0)) * 100}%`;
     return true;

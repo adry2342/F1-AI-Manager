@@ -441,9 +441,13 @@ export function buildFx(scene, T, sim, visuals, world) {
   let tecHitIdx = 0;
 
   function handleBarrierHit(s, d, side, sev, car) {
-    const wallD = side * T.barrier(s, side);
+    // donde golpea: el muro del pit (recta de meta) o la barrera; solo hay tecpro que mover donde se dibuja (escapatorias
+    // de grava o asfalto: tipo 1-2; con hierba es muro de hormigón). Antes salían bloques sueltos en cualquier muro
+    const wallD = side * T.wallIn(s, side);
+    const tecpro = T.soft(s, side) && Math.abs(T.wall(s, side) - T.barrier(s, side)) < 0.01;
     T.pos(s, wallD, P);
     T.pos(s + 2, wallD, P2);
+    if (!tecpro) { emitSparks(P[0], P[1] + 0.5, P[2], P2[0] - P[0], 5, P2[2] - P[2], 40, 18); return; }
 
     const trackYaw = Math.atan2(P2[0] - P[0], P2[2] - P[2]);
     const normX = -Math.cos(trackYaw) * side;
@@ -683,27 +687,33 @@ export function buildFx(scene, T, sim, visuals, world) {
     }
   }
 
-  sim.on((e) => {
+  // (la repetición vuelve a lanzar los trozos y las chispas de lo grabado: replayEvent)
+  const live = () => sim.session && !sim.session.done && !window.__app?.skipping;
+  function onEvent(e, replaying) {
     if (!e) return;
     if (e.type === 'session' || e.type === 'sessionEnd') {
-      resetSessionFx();
+      if (!replaying) resetSessionFx();
     } else if (e.type === 'debris') {
-      if (sim.session && !sim.session.done && !window.__app?.skipping) {
+      if (replaying || live()) {
         spawnDebrisExplosion(e.car, e.part, e.sev, e.broken, e.s, e.d);
       }
     } else if (e.type === 'barrier') {
-      if (sim.session && !sim.session.done && !window.__app?.skipping) {
+      if (!replaying && live()) {
         handleBarrierHit(e.s, e.d, e.side, e.sev, e.car);
       }
-    } else if (e.type === 'contact' && e.wall && (e.sev || 0) > 6) {
-      if (sim.session && !sim.session.done && !window.__app?.skipping) {
-        const V = visuals[e.car?.i];
+    } else if (e.type === 'contact' && (e.sev || 0) > (e.wall ? 6 : 4)) {
+      if (replaying || live()) {
+        // contra el muro, en el coche; entre dos coches, en el punto medio
+        const V = visuals[e.car?.i], O = e.other ? visuals[e.other.i] : null;
         if (V && V.root) {
-          emitSparks(V.root.position.x, V.root.position.y + 0.4, V.root.position.z, 0, 4, 0, 30, 16);
+          const p = V.root.position, q = O?.root?.position;
+          const x = q ? (p.x + q.x) / 2 : p.x, z = q ? (p.z + q.z) / 2 : p.z, y = (q ? (p.y + q.y) / 2 : p.y) + 0.4;
+          emitSparks(x, y, z, 0, 4, 0, e.wall ? 30 : 18, 16);
         }
       }
     }
-  });
+  }
+  sim.on((e) => onEvent(e, false));
 
   // =========================================================================
   // 7. ACTUALIZACIÓN POR FRAME
@@ -1105,5 +1115,5 @@ export function buildFx(scene, T, sim, visuals, world) {
     updateGravel();
   }
 
-  return { update, reset: resetSessionFx };
+  return { update, reset: resetSessionFx, replayEvent: (e) => onEvent(e, true) };
 }

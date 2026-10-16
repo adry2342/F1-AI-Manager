@@ -149,7 +149,7 @@ export class Sim {
 
   // Lo que el piloto cree que agarra el coche ahora (sabe su neumático, no el agarre real)
   plannedMu(car) {
-    return MU * this.gripK(car) * this.paceG(car) * (1 + 0.018 * (car.drv.pace - 0.88)) * this.tyreGrip(car, true) * this.evoFactor() * (1 - 0.00035 * car.fuel) * (1 - 0.06 * car.dmg) * this.wxCare(car);
+    return MU * this.gripK(car) * this.paceG(car) * (1 + 0.018 * (car.drv.pace - 0.88)) * this.tyreGrip(car, true) * this.evoFactor() * (1 - 0.00035 * car.fuel) * this.wxCare(car);
   }
   // prudencia con condiciones cambiantes: si le cae agua encima con lisos, o la pista está a medio secar, levanta algo
   wxCare(car) {
@@ -833,7 +833,7 @@ export class Sim {
       car.vs = car.v; car.dPrev = car.d; car.slide = car.slide || 0;
       if (car.inPit) { car.parked = true; return; }
       const side = car.parkSide || (car.parkSide = car.d >= 0 ? 1 : -1);
-      const goal = side * Math.min(T.hwAt(car.s) + 9, T.barrier(car.s, side) - 1.2);
+      const goal = side * Math.min(T.hwAt(car.s) + 9, T.wallIn(car.s, side) - 1.2);
       car.d += Math.max(-3 * DT, Math.min(3 * DT, goal - car.d));
       car.dev = car.d - car.line[T.idx(car.s)];
       if (Math.abs(car.d - goal) < 0.1 && car.v < 1) car.parked = true;
@@ -944,8 +944,8 @@ export class Sim {
     }
     const talent = 1 + 0.018 * (car.drv.pace - 0.88);
     const muTrue = (1 + (car.exitBoost || 0)) * MU * this.gripK(car) * this.paceG(car) * talent * tg * this.evoFactor() * (1 - 0.00035 * car.fuel) *
-      (z >= 0 ? this.zoneTrue[z] : 1) * dirty * offLine * surfMu * (1 - 0.06 * car.dmg) * car.wobble;
-    const aero = AERO * this.aeroK(car) * (car.drs ? 0.8 : 1) * (1 - 0.18 * car.parts.rw);
+      (z >= 0 ? this.zoneTrue[z] : 1) * dirty * offLine * surfMu * car.wobble;   // (los daños no cambian cómo va: solo se ven)
+    const aero = AERO * this.aeroK(car) * (car.drs ? 0.8 : 1);
     // rebufo con inercia: al salir de detrás para pasar no se pierde de golpe sino en ~1,5 s (el «tirachinas»);
     // si se perdía de golpe, a mitad de recta dejaba de ganar metros y el adelantamiento acababa en la curva
     car.towK = Math.min(tow, (car.towK ?? 1) + DT * 0.13);
@@ -1143,12 +1143,14 @@ export class Sim {
       if (o.inPit || o.state === 'grid') continue;
       if (Math.abs(rel) > LEN + 0.6) continue;
       const sgn = Math.sign(prevD - o.d) || (car.i < o.i ? 1 : -1);
-      if (sgn > 0 && d < o.d + SEP) { d = o.d + SEP; if (car.psi < 0) car.psi *= 0.3; }
-      if (sgn < 0 && d > o.d - SEP) { d = o.d - SEP; if (car.psi > 0) car.psi *= 0.3; }
+      // (si el otro ya estaba encima, p. ej. al llegarle por detrás solapado, salta de lado hasta 2 m en un paso: la IA
+      // cuenta con ello para no chocar; el dibujo lo suaviza, ver visD en main.js)
+      if (sgn > 0 && d < o.d + SEP) { car.jumpD = (car.jumpD || 0) + o.d + SEP - d; d = o.d + SEP; if (car.psi < 0) car.psi *= 0.3; }
+      if (sgn < 0 && d > o.d - SEP) { car.jumpD = (car.jumpD || 0) + o.d - SEP - d; d = o.d - SEP; if (car.psi > 0) car.psi *= 0.3; }
     }
 
     // barrera (en la recta de meta, el muro del pit)
-    const side = d >= 0 ? 1 : -1, B = T.wall(car.s, side) - 1.1;
+    const side = d >= 0 ? 1 : -1, B = T.wallIn(car.s, side) - 1.1;
     if (Math.abs(d) > B) { d = side * B; car.d = d; this.hitWall(car, side); d = car.d; }
     car.d = d;
     car.psi = Math.max(-1.2, Math.min(1.2, car.psi));
@@ -1170,7 +1172,9 @@ export class Sim {
 
   // Contra la barrera fuera de un trompo: roce (rebota y pierde velocidad), golpe (trompo y daños) o accidente
   hitWall(car, side) {
-    const vn = car.v * Math.abs(Math.sin(car.psi)) + 0.4;
+    // (el tecpro amortigua: el mismo golpe hace menos daño que contra el hormigón)
+    const T = this.T, soft = T.soft(car.s, side) && T.wall(car.s, side) === T.barrier(car.s, side);
+    const vn = (car.v * Math.abs(Math.sin(car.psi)) + 0.4) * (soft ? 0.8 : 1);
     if (vn > 3) { this.emit({ type: 'contact', car, wall: true, sev: vn }); this.barrierHit(car, side, vn); }
     if (vn > 22 || (vn > 15 && this.rng() < 0.35)) { this.damage(car, 'susp', 1); this.damage(car, 'fw', 0.8); car.v = 0; car.mistake = null; this.retire(car, 'accidente'); return; }
     if (vn > 6) { this.damage(car, 'susp', vn > 10 ? 0.35 : 0.15); if (Math.abs(car.psi) > 0.25) this.damage(car, 'fw', vn * 0.04); }
@@ -1235,7 +1239,7 @@ export class Sim {
       if (v < 6) m.w *= 1 - DT * 2.5;
       m.rot += m.dir * m.w * DT;
       // barrera
-      const B = T.wall(car.s, side) - 1.1;
+      const B = T.wallIn(car.s, side) - 1.1;
       if (Math.abs(car.d) > B) {
         car.d = side * B;
         const vn = v * (Math.abs(Math.sin(m.psi)) + 0.1);    // velocidad de impacto contra la barrera
@@ -1271,7 +1275,10 @@ export class Sim {
     const P = car.parts, before = P[part];
     P[part] = Math.min(1, P[part] + amt);
     car.dmg = Math.max(car.dmg, P.fw * 0.7, P.rw * 0.8, P.susp);
-    this.emit({ type: 'debris', car, part, sev: P[part] - before, broken: before < 0.5 && P[part] >= 0.5, s: car.s, d: car.d });
+    const broken = before < 0.5 && P[part] >= 0.5;
+    this.emit({ type: 'debris', car, part, sev: P[part] - before, broken, s: car.s, d: car.d });
+    // libres y clasificación: con una pieza rota vuelve al garaje a cambiarla (el del mánager, si se lo dice: aviso)
+    if (broken && this.session.id !== 'RACE' && !this.mgrHand(car) && !car.inPit && !car.retired) { car.lapKind = 'in'; car.pitReq = true; }
   }
 
   // grava en la pista: parche que se va limpiando con el tiempo y con cada coche que pasa por encima
@@ -1371,8 +1378,8 @@ export class Sim {
     const base = car.team.crew + gauss(r) * 0.18;
     // fallos del equipo, igual de probables para todos: 1 de cada 10 parada de ~4 s, y alguna rara de desastre
     const u = r(), slow = u < 0.02 ? 4 + r() * 5 : u < 0.12 ? 1.2 + r() * 1.5 : 0;
-    const wing = car.dmg > 0.3 ? 7.5 : 0;
-    car.stopTime = Math.max(1.8, base + slow + wing);
+    // (las piezas rotas se cambian sin perder tiempo: los daños solo se ven)
+    car.stopTime = Math.max(1.8, base + slow);
     if (this.session.id !== 'RACE') { this.enterGarage(car); return; }
     this.emit({ type: 'pitstop', car, time: car.stopTime });
   }
@@ -1380,6 +1387,7 @@ export class Sim {
   enterGarage(car) {
     car.state = 'garage'; car.pitPhase = 'box'; car.v = 0; car.inPit = true; car.drs = false; car.mistake = null; car.slide = 0; car.psi = 0; car.beta = 0;
     car.d = this.T.pit.d - 9; car.lapKind = 'out'; car.pitReq = false; car.ers = 1; car.testRun = false;
+    car.dmg = 0; car.parts = { fw: 0, rw: 0, susp: 0 };   // en el garaje se arregla todo
     if (car.mgr) { car.mgr.boxReq = false; this.emit({ type: 'garage', car }); }
     if (car.plan) {
       car.plan.idx++; let nx = car.plan.runs[car.plan.idx]; if (nx && isFP(this.session.id)) nx.go = 0;
@@ -2120,13 +2128,17 @@ export class Sim {
         if (lat > 1.0 && absRel < LEN * 0.8) {
           // roce lateral: se separan
           const push = (2.0 - lat) / 2 + 0.02; const sgn = Math.sign(A.d - B.d) || 1;
-          const latClose = Math.abs((A.d - A.dPrev) - (B.d - B.dPrev)) / DT;
-          if (!A.inPit) { A.dev += sgn * push; A.d += sgn * push; A.devV = 0; }
-          if (!B.inPit) { B.dev -= sgn * push; B.d -= sgn * push; B.devV = 0; }
+          // (solo si se acercan: al separarse también hay velocidad de lado y contaba como choque)
+          const latClose = sgn * ((B.d - B.dPrev) - (A.d - A.dPrev)) / DT;
+          if (!A.inPit) { A.dev += sgn * push; A.d += sgn * push; A.devV = 0; A.jumpD = (A.jumpD || 0) + sgn * push; }
+          if (!B.inPit) { B.dev -= sgn * push; B.d -= sgn * push; B.devV = 0; B.jumpD = (B.jumpD || 0) - sgn * push; }
           if (latClose > 2.5 && !A.inPit) this.contact(back, front, latClose * 1.6);
         } else {
           const closing = back.v - front.v;
-          back.v = Math.max(0, Math.min(back.v, front.v - 0.3));
+          // alcance: el de delante sale empujado y el de detrás rebota un poco (antes se pegaba a su velocidad sin más y
+          // no parecía que hubiera choque)
+          if (closing > 1 && !front.inPit && !back.inPit) front.v += Math.min(4, closing * 0.35);
+          back.v = Math.max(0, Math.min(back.v, front.v - 0.3 - (back.inPit ? 0 : Math.min(3, Math.max(0, closing) * 0.2))));
           // en el pit lane también se hace cola (antes se atravesaban); el que está parado en su box no se mueve
           const still = back.pitPhase === 'stop' || back.pitPhase === 'box';
           // (en el pit lane poco a poco: un salto de s movía de golpe su trazado lateral en la rampa)

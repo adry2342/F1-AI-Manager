@@ -117,6 +117,7 @@ async function main(choice) {
   const ui = new UI(app);
   const radio = app.radio = new Radio(sim, director, app);
   const replay = app.replay = new Replay(app, sim, director);
+  app.fx = fx;
 
   function startSession(id) {
     sim.startSession(id);
@@ -157,7 +158,11 @@ async function main(choice) {
     }
     // interpolación: se dibuja donde estará tras el tiempo aún no simulado (evita saltos de 0/2 pasos por fotograma)
     const lead = (car.inPit && car.pitPhase === 'stop') || car.state === 'grid' ? 0 : simLead;   // parado en la parrilla: sin extrapolar
-    const sv = car.s + (car.vs ?? car.v) * lead, dv = car.d + (car.inPit ? 0 : (car.d - (car.dPrev ?? car.d)) / DT * lead);
+    // saltos de lado de la física (al apartarse de otro coche que ya estaba encima: hasta 2 m en un paso): se dibujan como
+    // un deslizamiento de ~0,15 s en vez de un teletransporte
+    if (car.jumpD) { V.offD = V.teleport ? 0 : (V.offD || 0) - car.jumpD; car.jumpD = 0; }
+    if (V.offD) { V.offD *= Math.exp(-realDt * 14); if (Math.abs(V.offD) < 0.01) V.offD = 0; }
+    const sv = car.s + (car.vs ?? car.v) * lead, dv = car.d + (V.offD || 0) + (car.inPit ? 0 : (car.d - (car.dPrev ?? car.d)) / DT * lead);
     T.pos(sv, dv, P);
     const i = T.idx(sv);
     const trackYaw = Math.atan2(T.lerp(T.tx, sv), T.lerp(T.tz, sv));

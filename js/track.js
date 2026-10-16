@@ -468,11 +468,16 @@ function buildRunoff(T) {
   const BLs = smooth(BL, 6, 2), BRs = smooth(BR, 6, 2);
   for (let i = 0; i < M; i++) { if (typeR[i] === 3) BRs[i] = 34; }
   T.runoff = { kS, BL: BLs, BR: BRs, typeL, typeR, STEP, M };
-  T.barrier = (s, side) => { const i = Math.floor(T.wrap(s) / STEP) % M; return side > 0 ? BLs[i] : BRs[i]; };
+  // (interpolada como se dibuja: antes iba a escalones de STEP y el coche chocaba en el aire o se metía en el muro)
+  T.barrier = (s, side) => { const u = T.wrap(s) / STEP, i = Math.floor(u) % M, f = u - Math.floor(u), A = side > 0 ? BLs : BRs; return A[i] * (1 - f) + A[(i + 1) % M] * f; };
+  // ¿hay tecpro delante del muro? (escapatorias de grava o asfalto; se dibuja 1 m por delante de la barrera)
+  T.soft = (s, side) => { const t = (side > 0 ? typeL : typeR)[Math.floor(T.wrap(s) / STEP) % M]; return t === 1 || t === 2; };
   T.surface = (s, side) => { const i = Math.floor(T.wrap(s) / STEP) % M; return side > 0 ? typeL[i] : typeR[i]; };
   // muro contra el que choca un coche (en la recta de boxes, el muro del pit; en las rampas, la valla del fondo)
   const wA = T.wrap(pit.entryB + 20), wB = T.wrap(pit.exitA - 20);
   T.wall = (s, side) => (side < 0 && between(T, s, wA, wB) ? -PIT_WALL_D - 0.4 : T.barrier(s, side));
+  // lo primero que toca el coche: el muro del pit, la cara del tecpro o el muro
+  T.wallIn = (s, side) => (side < 0 && between(T, s, wA, wB) ? -PIT_WALL_D - 0.4 : T.barrier(s, side) - (T.soft(s, side) ? 1.0 : 0));
 }
 
 export function between(T, s, a, b) { return T.ahead(a, s) <= T.ahead(a, b); }
