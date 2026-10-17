@@ -5,6 +5,7 @@ import { Sky } from 'three/addons/objects/Sky.js';
 import * as TX from './textures.js';
 import { HALF_W, between } from './track.js';
 import { TEAMS } from './teams.js';
+import { coastTerrain } from './coast.js';
 
 const HW = HALF_W;
 
@@ -51,8 +52,8 @@ function hash(x) { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.f
 export function buildWorld(T, scene, renderer, quality = 'high') {
   const world = { update: () => {}, screens: [], lights: [], marshal: [], crews: [], overheads: [] };
   world.scene = scene;
-  const meta = T.meta || {}, night = !!meta.night, urban = !!meta.urban, sunset = !!meta.sunset, autumn = !!meta.autumn;
-  world.night = night; world.urban = urban; world.sunset = sunset; world.autumn = autumn;
+  const meta = T.meta || {}, night = !!meta.night, urban = !!meta.urban, sunset = !!meta.sunset, autumn = !!meta.autumn, coast = !!meta.coast;
+  world.night = night; world.urban = urban; world.sunset = sunset; world.autumn = autumn; world.coast = coast;
   const STEP = 2;
   const M = Math.floor(T.L / STEP);
   const P = [0, 0, 0];
@@ -113,6 +114,10 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       roughnessMap: TX.asphaltRough(),
       color: 0xb9bcc2,
       roughness: 0.92,
+      // (va encima de la escapatoria, a 1,5 cm: sin desplazamiento parpadeaba con ella desde lejos)
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -2,
     }),
     grass: new THREE.MeshStandardMaterial({ map: night ? TX.sand() : TX.grass(), roughness: 1 }),
     gravel: new THREE.MeshStandardMaterial({ map: TX.gravel(), roughness: 1 }),
@@ -127,6 +132,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     terrain: new THREE.MeshStandardMaterial({ map: night ? TX.sand() : TX.terrainGrass(), roughness: 1, vertexColors: true }),
     check: new THREE.MeshStandardMaterial({ map: checkTex(), roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3 }),
   };
+  if (coast) mat.grass.color.set(0xe0d49a);   // (costa: hierba seca de verano)
   mat.asphalt.map.repeat.set(1, 1);
   if (mat.asphalt.normalMap) mat.asphalt.normalMap.repeat.set(1, 1);
   if (mat.asphalt.roughnessMap) mat.asphalt.roughnessMap.repeat.set(1, 1);
@@ -380,6 +386,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       const posts = [];
       for (let i = 0; i < M; i++) {
         if (tp[i] === 3 || tp[(i + 1) % M] === 3) continue;
+        if (T.inTunnel(i * STEP) && T.inTunnel((i + 1) * STEP)) continue;   // (el túnel tiene sus propias paredes: coast.js)
         const s0 = i * STEP, s1 = s0 + STEP, i1 = (i + 1) % M;
         const d0 = side * B[i], d1 = side * B[i1];
         const g0 = pos(s0, d0, -0.3), g1 = pos(s1, d1, -0.3);
@@ -449,7 +456,11 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       + Math.max(0, r - 1250) * 0.11 * (0.7 + 0.3 * Math.sin(Math.atan2(z - ccz, x - ccx) * 5));
   };
   world.hills = hills;
+  // costa: acantilados, calas, puerto y fondo del mar (coast.js); el resto, colinas que se funden con la pista
+  const CT = coast ? coastTerrain(T) : null;
+  if (CT) { world.hills = CT.land; world.isSea = CT.isSea; world.coastSD = CT.sd; world.coastBeach = CT.beachW; world.coastHarbour = CT.inHarbour; world.coastCorridor = CT.corridor; }
   const groundY = (x, z) => {
+    if (CT) return CT.G(x, z);
     const n = nearest(x, z, 6);
     const ty = n.i >= 0 ? T.y[n.i] : 6;
     const t = Math.min(1, Math.max(0, (n.d - 60) / 360));
@@ -518,7 +529,18 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       } else
       for (let k = 0; k < 3; k++) col[i * 3 + k] = Math.pow((lush[k] * (1 - w) + f[k] * w * (w > 0.5 ? edge : 1)) * jit * (y > 60 ? 0.9 : 1), 2.2) * 1.45;
     }
+    if (CT) CT.paint(geo, nx, nz, col);
     geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    world.terrainGeo = geo; world.terrainGrid = { x0, z0, x1, z1, nx, nz };
+    // altura exacta de la malla tal como se dibuja (triángulos de cs m): con la función analítica, en las laderas
+    // empinadas lo apoyado en el suelo quedaba flotando o enterrado (vale mientras nadie rehaga la malla: fitTerrain)
+    world.meshY = (x, z) => {
+      const u = (x - x0) / cs, w = (z - z0) / cs, ix = Math.floor(u), iy = Math.floor(w);   // (fila iy: z crece)
+      if (ix < 0 || iy < 0 || ix >= nx || iy >= nz) return groundY(x, z);
+      const fu = u - ix, fv = w - iy, W = nx + 1, Yv = (i, j) => p.getY(j * W + i);
+      return fu + fv <= 1 ? Yv(ix, iy) + (Yv(ix + 1, iy) - Yv(ix, iy)) * fu + (Yv(ix, iy + 1) - Yv(ix, iy)) * fv
+        : Yv(ix + 1, iy + 1) + (Yv(ix, iy + 1) - Yv(ix + 1, iy + 1)) * (1 - fu) + (Yv(ix + 1, iy) - Yv(ix + 1, iy + 1)) * (1 - fv);
+    };
     geo.computeVertexNormals();
     const m = new THREE.Mesh(geo, mat.terrain); m.receiveShadow = true; scene.add(m);
   }
@@ -654,17 +676,134 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     along(wA, wLen, pit.wallD - 0.4, pit.wallD + 0.4, 1.2, mat.concrete, 1, 8);
     along(wA, wLen, pit.wallD, pit.wallD, (s, e) => (e ? 4.5 : 1.2), mat.fence, 1, 3);
     for (let q = 0; q < wLen; q += 2) { const a = pos(wA + q, pit.wallD, -0.2), b = pos(wA + q + 2, pit.wallD, -0.2); addWall(a[0], a[2], a[1], b[0], b[2], b[1], 4.8); }
-    // edificio de boxes
-    const bA = T.wrap(pit.boxes[0].s - 40), bLen = T.ahead(bA, T.wrap(pit.boxes[pit.boxes.length - 1].s + 40));
-    const facade = new THREE.MeshStandardMaterial({ color: 0xe8e8e8, roughness: 0.6 });
-    const glassM = new THREE.MeshStandardMaterial({ map: TX.glass(), metalness: 0.6, roughness: 0.15 });
-    glassM.map.repeat.set(1, 1);
-    along(bA, bLen, -34, -34, (s, e) => (e ? 5.5 : 0), facade, 1, 6);
-    along(bA, bLen, -34.5, -34.5, (s, e) => (e ? 12 : 5.5), glassM, 1, 16);
-    along(bA, bLen, -52, -33, 12, new THREE.MeshStandardMaterial({ map: TX.roofTex(), roughness: 0.7, side: THREE.DoubleSide }), 8, 8);
-    along(bA, bLen, -52, -52, (s, e) => (e ? 12 : 0), new THREE.MeshStandardMaterial({ color: 0xd9dde2, roughness: 0.8, side: THREE.DoubleSide }), 1, 12);
-    along(bA, bLen, -33, -33, (s, e) => (e ? 12.6 : 12), mat.wall, 1, 24);
-    along(bA, bLen, -52, -52, (s, e) => (e ? 0 : 12), new THREE.MeshStandardMaterial({ map: TX.buildingTex(2), roughness: 0.8 }), 1, 20);
+    // edificio de boxes: tres plantas como los de ahora (Yas Marina, Lusail, Madring): garajes abajo, oficinas y hospitality
+    // de los equipos en la primera con balcón, Paddock Club en la segunda con terraza volada sobre el pit lane y vidrio
+    // inclinado, cubierta en voladizo con terraza; aletas blancas que marcan los módulos, persianas en los garajes que no
+    // son de equipo, podio volado en el centro, núcleos de escalera de vidrio en los extremos y torre de control aparte
+    const bA = T.wrap(pit.boxes[0].s - 40), bLen = T.ahead(bA, T.wrap(pit.boxes[pit.boxes.length - 1].s + 40)), bB = bA + bLen;
+    // posiciones de los garajes sin dar la vuelta (la recta de meta cruza s = 0: los primeros quedan al final de la vuelta)
+    const BX = pit.boxes.map((b) => bA + T.ahead(bA, b.s));
+    const sP = (BX[(BX.length >> 1) - 1] + BX[BX.length >> 1]) / 2;      // podio: entre los dos garajes del centro
+    const DS = THREE.DoubleSide;
+    const white = new THREE.MeshStandardMaterial({ color: 0xe3e6e9, roughness: 0.55, side: DS });
+    const under = new THREE.MeshStandardMaterial({ color: 0xa9afb6, roughness: 0.8, side: DS });
+    const deckM = new THREE.MeshStandardMaterial({ map: TX.roofTex(), color: 0xc9c4ba, roughness: 0.85, side: DS });
+    const glassM = new THREE.MeshStandardMaterial({ map: TX.curtainWall(), emissiveMap: TX.curtainWall(true), emissive: 0xffffff, emissiveIntensity: night ? 1.1 : sunset ? 0.45 : 0.12, metalness: 0.3, roughness: 0.12, side: DS });
+    const railM = new THREE.MeshStandardMaterial({ color: 0xbcd6e4, transparent: true, opacity: 0.3, roughness: 0.05, depthWrite: false, side: DS });
+    const shutM = new THREE.MeshStandardMaterial({ map: TX.shutter(), roughness: 0.6, metalness: 0.3, side: DS });
+    const yawS = (s) => Math.atan2(T.tx[T.idx(s)], T.tz[T.idx(s)]);
+    // pared (o vidrio inclinado) a lo largo de s, de (d0, h0) abajo a (d1, h1) arriba; la textura se repite cada uL metros
+    const wall = (s0, len, d0, h0, d1, h1, m, uL = 12, cast = false) => {
+      const r = new Ribbon(), n = Math.max(1, Math.ceil(len / STEP)), rows = [];
+      for (let k = 0; k <= n; k++) { const s = s0 + (len * k) / n; rows.push([[...pos(s, d0, h0), s / uL, 0], [...pos(s, d1, h1), s / uL, 1]]); }
+      r.strip(rows); const m3 = new THREE.Mesh(r.geo(), m); m3.receiveShadow = true; m3.castShadow = cast; scene.add(m3); return m3;
+    };
+    // cara transversal (en los extremos): rectángulo de d0..d1 y h0..h1 en la estación s
+    const ends = new Ribbon(), endsG = new Ribbon();
+    const cap = (r, s, d0, d1, h0, h1) => r.quad(pos(s, d0, h0), pos(s, d1, h0), pos(s, d1, h1), pos(s, d0, h1), [[0, 0], [Math.abs(d1 - d0) / 12, 0], [Math.abs(d1 - d0) / 12, 1], [0, 1]]);
+    // forjado volado: canto delante y detrás, suelo arriba, techo abajo y cantos de los extremos
+    const slab = (dF, dB, y0, y1, top) => {
+      along(bA, bLen, dF, dB, y1, top, 8, 8).castShadow = true;
+      along(bA, bLen, dF, dB, y0, under, 8, 8).castShadow = true;
+      wall(bA, bLen, dF, y0, dF, y1, white); wall(bA, bLen, dB, y0, dB, y1, white);
+      for (const s of [bA, bB]) cap(ends, s, dF, dB, y0, y1);
+    };
+    slab(-31.5, -52.6, 6.2, 6.8, deckM);        // balcón de la primera planta
+    slab(-29.5, -52.6, 10.6, 11.2, deckM);      // terraza del Paddock Club
+    slab(-27.5, -53.2, 15.4, 16.2, new THREE.MeshStandardMaterial({ map: TX.roofTex(), roughness: 0.8, side: DS }));  // cubierta
+    // planta baja: dintel corrido sobre las puertas y fachada trasera
+    wall(bA, bLen, -33.9, 4.55, -33.9, 6.2, white);
+    wall(bA, bLen, -52, 0, -52, 6.2, white, 12, true);
+    // primera planta (vertical, retranqueada) y segunda (vidrio inclinado hacia fuera); detrás, otra vez vidrio
+    wall(bA, bLen, -35, 6.8, -35, 10.6, glassM);
+    wall(bA, bLen, -36.8, 11.2, -35.2, 15.4, glassM);
+    wall(bA, bLen, -52.3, 6.8, -52.3, 10.6, glassM, 12, true); wall(bA, bLen, -52.3, 11.2, -52.3, 15.4, glassM, 12, true);
+    // barandillas de vidrio con pasamanos (balcón, terraza y cubierta)
+    for (const [d, h] of [[-31.6, 6.8], [-29.6, 11.2], [-27.6, 16.2]]) {
+      wall(bA, bLen, d, h, d, h + 1.08, railM).userData.noOcclude = true;
+      wall(bA, bLen, d, h + 1.06, d, h + 1.12, white);
+    }
+    // extremos: muro ciego hasta la cubierta con una franja de vidrio, y barandillas de lado en los balcones
+    for (const [s, o] of [[bA, -0.06], [bB, 0.06]]) {
+      cap(ends, s, -33.9, -52.6, 0, 15.4);
+      cap(endsG, s + o, -40, -46, 0.6, 15);
+      cap(ends, s + o * 0.5, -31.5, -35, 6.8, 7.9); cap(ends, s + o * 0.5, -29.5, -36.8, 11.2, 12.3);
+    }
+    { const m3 = new THREE.Mesh(ends.geo(), white); m3.castShadow = m3.receiveShadow = true; scene.add(m3); }
+    scene.add(new THREE.Mesh(endsG.geo(), glassM));
+    // piezas sueltas instanciadas: [s, d, y (centro), largo a lo largo de la pista, alto, fondo, color]
+    const m4 = new THREE.Matrix4(), qq = new THREE.Quaternion(), vv = new THREE.Vector3(), ss = new THREE.Vector3(), col = new THREE.Color(), up = new THREE.Vector3(0, 1, 0);
+    const blocks = (geo, m, list, occl = false) => {
+      const im = new THREE.InstancedMesh(geo, m, list.length);
+      list.forEach(([s, d, y, sx, sy, sz, c, ry = 0], n) => {
+        const P3 = pos(s, d, y); qq.setFromAxisAngle(up, yawS(s) + Math.PI / 2 + ry);
+        im.setMatrixAt(n, m4.compose(vv.set(...P3), qq, ss.set(sx, sy, sz)));
+        if (c != null) im.setColorAt(n, col.set(c));
+      });
+      im.castShadow = im.receiveShadow = true; im.userData.noOcclude = !occl; scene.add(im); return im;
+    };
+    const unit = new THREE.BoxGeometry(1, 1, 1);
+    // tramos de planta baja sin garaje de equipo: módulos con persiana (y una entrada acristalada por tramo) entre pilares
+    const spans = [];
+    { let a = bA; for (const b of BX) { spans.push([a, b - 8]); a = b + 8; } spans.push([a, bB]); }
+    const shut = new Ribbon(), door = new Ribbon(), piers = [], fins = [];
+    for (const [a, b] of spans) {
+      const L = b - a; if (L < 2) continue;
+      const nb = Math.max(1, Math.round(L / 8.5)), w = L / nb;
+      for (let k = 0; k < nb; k++) {
+        const s0 = a + k * w, s1 = s0 + w, r = k === (nb >> 1) && nb > 1 ? door : shut;
+        r.quad(pos(s0, -34.25, 0), pos(s1, -34.25, 0), pos(s1, -34.25, 4.6), pos(s0, -34.25, 4.6));
+        if (k) piers.push([s0, -33.95, 2.3, 0.9, 4.6, 0.7]);
+      }
+      for (let k = 1; k < Math.round(L / 13); k++) fins.push(a + (L * k) / Math.round(L / 13));
+    }
+    for (const b of BX) { piers.push([b - 8.45, -33.95, 2.3, 0.9, 4.6, 0.7], [b + 8.45, -33.95, 2.3, 0.9, 4.6, 0.7]); fins.push(b - 8.45, b + 8.45); }
+    scene.add(new THREE.Mesh(shut.geo(), shutM));
+    scene.add(new THREE.Mesh(door.geo(), glassM));
+    blocks(unit, white, piers);
+    // entradas de cada equipo por detrás (desde el paddock): puerta de vidrio con marco de su color
+    blocks(unit, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 }), TEAMS.map((t, k) => [BX[k], -52.1, 1.75, 5.2, 3.5, 0.2, t.c1]));
+    blocks(unit, glassM, BX.map((b) => [b, -52.25, 1.45, 4.2, 2.9, 0.12]));
+    // aletas que bajan de la cubierta y separan los módulos de cada equipo
+    blocks(unit, white, fins.filter((s) => Math.abs(s - sP) > 9).map((s) => [s, -31.4, 11.2, 0.45, 10, 7.6]));
+    // franja del color del equipo en el canto del balcón, delante de su garaje
+    blocks(unit, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.45 }), TEAMS.map((t, k) => [BX[k], -31.42, 6.32, 16, 0.18, 0.12, t.c1]));
+    // núcleos de escalera de vidrio en los extremos y máquinas en la cubierta
+    blocks(unit, glassM, [[bA - 5, -43, 8.8, 8, 17.6, 9], [bB + 5, -43, 8.8, 8, 17.6, 9]], true);
+    blocks(unit, white, [[bA - 5, -43, 17.75, 8.6, 0.3, 9.6], [bB + 5, -43, 17.75, 8.6, 0.3, 9.6]]);
+    const plant = [];
+    for (let s = bA + 18; s < bB - 10; s += 34) plant.push([s, -47, 17.3, 7, 2.2, 6, 0x9aa1a8], [s + 9, -49, 16.9, 3, 1.4, 3, 0xb0b5bb]);
+    blocks(unit, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.3 }), plant);
+    // gente en el balcón, en la terraza y en la cubierta (el Paddock Club lleno)
+    {
+      let seed = 17; const r = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }, people = [];
+      const PAL = [0x1d2733, 0xf1f1ee, 0x2f4d7a, 0x8a2b2b, 0xd9c7a5, 0x3d5a40, 0x111111, 0xc2c7cc, 0xe0a24a];
+      const fill = (dA, dB, h, every) => {
+        for (let s = bA + 2; s < bB - 2; s += every * (0.4 + r() * 1.2)) {
+          if (fins.some((f) => Math.abs(f - s) < 0.8 && Math.abs(f - sP) > 9)) continue;
+          if (r() < 0.25) { const d = dA + r() * (dB - dA); people.push([s, d, h, r()], [s + 0.6, d - 0.2 + r() * 0.4, h, r()]); s += 1; continue; }
+          people.push([s, dA + r() * (dB - dA), h, r()]);
+        }
+      };
+      fill(-32.2, -34.4, 6.8, 6); fill(-30.2, -32.8, 11.2, 2.4); fill(-28.3, -31.5, 16.2, 4);
+      const bodyG = new THREE.CapsuleGeometry(0.25, 0.85, 3, 8); bodyG.translate(0, 0.68, 0);
+      const headG = new THREE.SphereGeometry(0.13, 8, 6); headG.translate(0, 1.45, 0);
+      blocks(bodyG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.75 }), people.map(([s, d, h, c]) => [s, d, h, 1, 0.9 + c * 0.2, 1, PAL[Math.floor(c * PAL.length)], c * 6]));
+      blocks(headG, new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.8 }), people.map(([s, d, h, c]) => [s, d, h + (0.9 + c * 0.2 - 1) * 1.45, 1, 1, 1, [0xc89878, 0x8d5a3b, 0xe2b896, 0x5a3825][Math.floor(c * 97) % 4]]));
+    }
+    // podio volado sobre el pit lane en el centro del edificio, con el telón detrás
+    {
+      blocks(unit, white, [[sP, -28.75, 6.5, 15, 0.6, 5.5]], true);
+      blocks(unit, new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.5 }), [[sP, -28.6, 7.175, 2.6, 0.75, 1.8], [sP - 2.7, -28.6, 7.05, 2.6, 0.5, 1.8], [sP + 2.7, -28.6, 6.975, 2.6, 0.35, 1.8]]);
+      wall(sP - 7.5, 15, -26.05, 6.8, -26.05, 7.9, railM).userData.noOcclude = true;
+      const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 256; const g = cv.getContext('2d');
+      const grd = g.createLinearGradient(0, 0, 1024, 0); grd.addColorStop(0, '#0d0f14'); grd.addColorStop(0.5, '#1c2230'); grd.addColorStop(1, '#0d0f14');
+      g.fillStyle = grd; g.fillRect(0, 0, 1024, 256); g.fillStyle = '#e10600'; g.fillRect(0, 226, 1024, 10);
+      g.fillStyle = '#fff'; g.font = '900 96px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText('F1 AI MANAGER', 512, 162);
+      const tx = new THREE.CanvasTexture(cv); tx.colorSpace = THREE.SRGBColorSpace;
+      const bd = new THREE.Mesh(new THREE.PlaneGeometry(15, 3.75), new THREE.MeshStandardMaterial({ map: tx, emissive: 0xffffff, emissiveMap: tx, emissiveIntensity: 0.25, roughness: 0.6 }));
+      bd.position.set(...pos(sP, -31.4, 9.1)); bd.rotation.y = yawS(sP) + Math.PI / 2; scene.add(bd);
+    }
     // suelo de todo el edificio
     along(bA, bLen, -52, -34, 0.02, new THREE.MeshStandardMaterial({ color: 0x8d9299, roughness: 0.8 }), 10, 10);
     // garajes con color de equipo
@@ -687,11 +826,12 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       const boxMat = new THREE.MeshStandardMaterial({ color: team.c1, roughness: 0.6, polygonOffset: true, polygonOffsetFactor: -3 });
       along(bs - 4, 8, pit.d - 5, pit.d - 2, 0.015, boxMat, 1, 8);
       // cartel con el nombre
-      const c = document.createElement('canvas'); c.width = 512; c.height = 96; const g = c.getContext('2d');
-      g.fillStyle = team.c1; g.fillRect(0, 0, 512, 96); g.fillStyle = team.c2; g.fillRect(0, 84, 512, 12);
-      g.fillStyle = '#fff'; g.font = '900 56px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText(team.short, 256, 64);
+      // (en el dintel, encima de la puerta)
+      const c = document.createElement('canvas'); c.width = 1024; c.height = 80; const g = c.getContext('2d');
+      g.fillStyle = team.c1; g.fillRect(0, 0, 1024, 80); g.fillStyle = team.c2; g.fillRect(0, 70, 1024, 10);
+      g.fillStyle = '#fff'; g.font = '900 54px "Titillium Web", Arial'; g.textAlign = 'center'; g.fillText(team.name.toUpperCase(), 512, 56, 980);
       const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
-      along(bs - 7, 14, -33.8, -33.8, (s, e) => (e ? 5.3 : 4.9), new THREE.MeshBasicMaterial({ map: t }), 1, 14);
+      along(bs - 6, 12, -33.8, -33.8, (s, e) => (e ? 5.95 : 4.95), new THREE.MeshBasicMaterial({ map: t }), 1, 12);
       // puesto en el muro del pit
       // puesto del muro: plataforma con pantallas y tejadillo del color del equipo
       const stand = new THREE.Group();
@@ -705,11 +845,20 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     });
     garageDetail();
     { const pm = new THREE.Mesh(paint.geo(), mat.white); pm.receiveShadow = true; scene.add(pm); }
-    // torre de control
-    const tp = pos(T.wrap(pit.boxes[pit.boxes.length - 1].s + 70), -44, 0);
-    const tower = new THREE.Mesh(new THREE.CylinderGeometry(6, 7, 34, 16), new THREE.MeshStandardMaterial({ map: TX.buildingTex(1), roughness: 0.6 }));
-    tower.position.set(tp[0], tp[1] + 17, tp[2]); tower.castShadow = true; scene.add(tower);
-    const top = new THREE.Mesh(new THREE.CylinderGeometry(10, 8, 6, 16), glassM); top.position.set(tp[0], tp[1] + 37, tp[2]); scene.add(top);
+    // torre de control: núcleo blanco con franjas de vidrio y sala de dirección de carrera con el vidrio inclinado hacia fuera
+    {
+      const ts = T.wrap(pit.boxes[pit.boxes.length - 1].s + 70), tp = pos(ts, -44, 0), grp = new THREE.Group();
+      const core = new THREE.Mesh(new THREE.BoxGeometry(9, 26, 9), white); core.position.y = 13; grp.add(core);
+      for (const ry of [0, Math.PI / 2]) { const st = new THREE.Mesh(new THREE.BoxGeometry(9.3, 24, 2.6), glassM); st.position.y = 13; st.rotation.y = ry; grp.add(st); }
+      const tg = TX.curtainWall().clone(); tg.repeat.set(4, 1); tg.needsUpdate = true;
+      const room = new THREE.Mesh(new THREE.CylinderGeometry(10.5, 8.2, 5.6, 4, 1, true), new THREE.MeshStandardMaterial({ map: tg, emissiveMap: TX.curtainWall(true), emissive: 0xffffff, emissiveIntensity: glassM.emissiveIntensity, metalness: 0.3, roughness: 0.12, side: DS }));
+      room.position.y = 29.4; room.rotation.y = Math.PI / 4; grp.add(room);
+      const fl = new THREE.Mesh(new THREE.CylinderGeometry(8.4, 8.4, 0.8, 4), white); fl.position.y = 26.4; fl.rotation.y = Math.PI / 4; grp.add(fl);
+      const rf = new THREE.Mesh(new THREE.CylinderGeometry(11.6, 11, 0.9, 4), white); rf.position.y = 32.6; rf.rotation.y = Math.PI / 4; grp.add(rf);
+      const mast = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.2, 9, 6), mat.post); mast.position.set(2, 37.5, 2); grp.add(mast);
+      grp.traverse((o) => { o.castShadow = o.receiveShadow = true; });
+      grp.position.set(...tp); grp.rotation.y = yawS(ts); scene.add(grp);
+    }
   }
 
   // ---------- equipos de mecánicos (se muestran en las paradas)
@@ -786,7 +935,16 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     r.strip(rs); const sm = new THREE.Mesh(r.geo(), seatMat); sm.receiveShadow = true; scene.add(sm);
     const struct = new THREE.MeshStandardMaterial({ color: 0xcfd3d8, roughness: 0.7 });
     along(s0, len, d0, d0, (s, e) => (e ? baseY : -0.5), struct, 1, 10);
-    along(s0, len, d1, d1, (s, e) => (e ? -0.5 : baseY + H + 0.6), struct, 1, 10);
+    along(s0, len, d1, d1, (s, e) => (e ? -0.5 : baseY + H + 0.6), standBack(seed), 1, 24);
+    // laterales: tapan el hueco bajo los asientos (de lado se veía a través de la grada) con un pretil por encima
+    {
+      const cap = new Ribbon(), sideM = new THREE.MeshStandardMaterial({ color: 0xc4c9cf, roughness: 0.75, side: THREE.DoubleSide });
+      for (const s of [s0, s0 + len]) {
+        const a0 = d0(s), a1 = d1(s);
+        cap.quad(pos(s, a0, -0.5), pos(s, a1, -0.5), pos(s, a1, baseY + H + 0.6), pos(s, a0, baseY + 1.1));
+      }
+      const cm = new THREE.Mesh(cap.geo(), sideM); cm.castShadow = cm.receiveShadow = true; scene.add(cm);
+    }
     if (roof) {
       const rr = new THREE.MeshStandardMaterial({ map: TX.roofTex(), roughness: 0.6, side: THREE.DoubleSide });
       along(s0, len, (s) => side * (B(s) - 2), (s) => side * (B(s) + depth + 0.5), (s, e) => (baseY + H + 5.5) - (e ? 0 : 1.2) * (side > 0 ? 1 : -1) * 0 + (e ? 0.8 : -0.4), rr, 8, 8);
@@ -803,7 +961,14 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   const cT = (i) => T.corners[i % T.corners.length];
   grandstand(T.wrap(cT(0).sIn - 120), 260, -Math.sign(cT(0).dir) || 1, 16, true, 2);
   // (en el bosque, el público de las curvas está en los taludes, estilo rally: ver buildForest en decor.js)
-  if (!autumn) {
+  if (coast) {
+    // costa: en la horquilla sobre el mar, en la chicane del túnel, en la horquilla del faro, en la 15 y en la última
+    grandstand(T.wrap(cT(2).sIn - 70), 150, -Math.sign(cT(2).dir) || 1, 14, true, 3);
+    grandstand(T.wrap(cT(5).sIn - 140), 190, -Math.sign(cT(5).dir) || 1, 16, true, 4);
+    grandstand(T.wrap(cT(10).sIn - 90), 170, -Math.sign(cT(10).dir) || 1, 14, false, 5);
+    grandstand(T.wrap(cT(14).sIn - 70), 140, -Math.sign(cT(14).dir) || 1, 12, true, 6);
+    grandstand(T.wrap(cT(17).sIn - 20), 200, -Math.sign(cT(17).dir) || 1, 16, true, 2);
+  } else if (!autumn) {
     grandstand(T.wrap(cT(4).sIn - 80), 200, -Math.sign(cT(4).dir) || 1, 14, true, 3);
     grandstand(T.wrap(cT(7).sIn - 150), 240, -Math.sign(cT(7).dir) || 1, 16, false, 4);
     grandstand(T.wrap(cT(11).sIn - 60), 260, -Math.sign(cT(11).dir) || 1, 16, true, 5);
@@ -813,15 +978,21 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   // ---------- pantallas gigantes
   const screen = (s, side, w = 16) => {
     const scr = TX.screenTex('F1 AI MANAGER');
-    const off = world.barrier(s, side) + 26;
+    // si cae junto a una grada de ese lado, detrás de ella y por encima de su tejado (antes se metía dentro)
+    let off = world.barrier(s, side) + 26, legH = 9;
+    for (const st of stands) if (st.side === side && between(T, s, T.wrap(st.s0 - w), T.wrap(st.s0 + st.len + w))) {
+      off = Math.max(off, world.barrier(s, side) + 6 + st.depth + 9); legH = Math.max(legH, st.h + 2.5);
+    }
     const p = pos(s, side * off, 0);
+    if (coast) p[1] = groundY(p[0], p[2]) - 0.3;                 // (en la costa el suelo no sigue a la pista)
+    (world.screenSpots ||= []).push({ x: p[0], z: p[2], r: w / 2 + 2 });
     const yaw = Math.atan2(T.tx[T.idx(s)], T.tz[T.idx(s)]);
     const g = new THREE.Group(); g.position.set(p[0], p[1], p[2]); g.rotation.y = yaw + (side > 0 ? -Math.PI / 2 : Math.PI / 2) + 0.5 * side;
     const panel = new THREE.Mesh(new THREE.PlaneGeometry(w, w / 2), new THREE.MeshBasicMaterial({ map: scr.tex, toneMapped: false }));
-    panel.position.y = 9 + w / 4; g.add(panel);
+    panel.position.y = legH + w / 4; g.add(panel);
     const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.6, w / 2 + 0.6, 0.5), new THREE.MeshStandardMaterial({ color: 0x15171a }));
-    frame.position.set(0, 9 + w / 4, -0.3); g.add(frame);
-    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.8, 9, 0.8), new THREE.MeshStandardMaterial({ color: 0x3a3d42 })); leg.position.y = 4.5; g.add(leg);
+    frame.position.set(0, legH + w / 4, -0.3); g.add(frame);
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.8, legH + 1, 0.8), new THREE.MeshStandardMaterial({ color: 0x3a3d42 })); leg.position.y = (legH - 1) / 2; g.add(leg);
     scene.add(g); world.screens.push(scr);
   };
   screen(T.wrap(-150), 1); screen(T.wrap(cT(0).apex), -Math.sign(cT(0).dir) || 1); screen(T.wrap(cT(7).sIn - 60), -Math.sign(cT(7).dir) || 1);
@@ -915,6 +1086,20 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
     scene.environmentIntensity = 0.6;
     const hemi = world.hemi = new THREE.HemisphereLight(0xd6dde4, 0x5a4630, 0.9); scene.add(hemi);
     sun = new THREE.DirectionalLight(0xfff4e6, 1.7);
+  } else if (coast) {
+    // mediodía de verano en la costa: sol alto del sursuroeste, cielo azul intenso y limpio, poca calima (más contraste)
+    sunDir.setFromSphericalCoords(1, THREE.MathUtils.degToRad(32), THREE.MathUtils.degToRad(-25));
+    su.turbidity.value = 1.6; su.rayleigh.value = 1.5; su.mieCoefficient.value = 0.003;
+    scene.fog = new THREE.Fog(0x9dc2e2, 2600, 16000);
+    const envScene = new THREE.Scene(); const sky2 = new Sky(); sky2.scale.setScalar(1000); envScene.add(sky2);
+    Object.assign(sky2.material.uniforms.sunPosition.value, sunDir);
+    for (const k of ['turbidity', 'rayleigh', 'mieCoefficient', 'mieDirectionalG']) sky2.material.uniforms[k].value = su[k].value;
+    // (el mar abajo: los coches y cristales reflejan azul, no hierba)
+    const sea = new THREE.Mesh(new THREE.CircleGeometry(900, 32), new THREE.MeshBasicMaterial({ color: 0x1d5f80 })); sea.rotation.x = -Math.PI / 2; sea.position.y = -30; envScene.add(sea);
+    scene.environment = pm.fromScene(envScene, 0.03).texture;
+    scene.environmentIntensity = 0.45;
+    const hemi = world.hemi = new THREE.HemisphereLight(0xbcd8ff, 0x6b5a40, 0.36); scene.add(hemi);
+    sun = new THREE.DirectionalLight(0xfff0d6, 2.95);
   } else if (sunset) {
     // atardecer en la montaña: sol bajo (~10° elevación), cielo naranja/rosado hacia el sol y azul violáceo al otro lado,
     // sombras largas, niebla cálida suave en la distancia, luz hemisférica cálida
@@ -1000,7 +1185,7 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       const w = box.max.x - box.min.x, d = box.max.z - box.min.z, h = box.max.y - box.min.y;
       if (w > 14 || d > 14 || w <= 0 || d <= 0) return;
       const cx = (box.min.x + box.max.x) / 2, cz = (box.min.z + box.max.z) / 2;
-      const gy = groundY(cx, cz);
+      const gy = world.groundY(cx, cz);
       if (!(h >= 2.5 || box.min.y - gy > 2.2) || box.max.y < gy + 1) return;
       const nr = nearest(cx, cz, 4); if (nr.i < 0 || nr.d > 130) return;   // lejos de la pista: no hace falta
       world.addOccluder(cx, cz, w / 2, d / 2, 0, box.min.y, box.max.y); n++;
@@ -1053,11 +1238,12 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
       if (Math.abs(d) > T.hw[i] + 1) {
         const side = d > 0 ? 1 : -1, B = world.barrier(s, side), ad = Math.abs(d);
         const pitZone = side < 0 && B >= 33.9;
-        if (pitZone && d < -33 && d > -52 && h < 12.8) return true;                 // edificio de boxes
+        if (pitZone && d < -33 && d > -52.6 && h < 16.2) return true;                 // edificio de boxes
         for (const st of stands) if (st.side === side && between(T, s, st.s0, T.wrap(st.s0 + st.len)) && ad > B + 5 && ad < B + 7 + st.depth && h < st.h) return true;
       }
       for (const o of world.overheads) if (Math.abs(T.rel(o.s, s)) < o.len + 1.3 && Math.abs(d) < o.w && h > o.h0 && h < o.h1) return true; // puente y pórtico
-      if (nr.d > 60 && y < groundY(x, z) + 0.5) return true;          // colinas
+      if (nr.d > 60 && y < world.groundY(x, z) + 0.5) return true;    // colinas
+      if (world.solidAt && world.solidAt(x, y, z, nr, d, h)) return true;   // túnel y colina encima (coast.js)
       if (nr.d <= 60 && h < 0.15) return true;                         // cresta de la propia pista o terraplén
     }
     return false;
@@ -1168,6 +1354,34 @@ export function buildWorld(T, scene, renderer, quality = 'high') {
   };
   world.stands = stands; world.along = along; world.pos = pos; world.bb = bb; world.mat = mat;
   return world;
+}
+
+// trasera de una grada (24 m por repetición): pilares de acero, paneles de hormigón, escaleras de evacuación y una lona
+// de patrocinador arriba (antes era una pared lisa de 500 m que desde lejos parecía un muro blanco)
+const standBackCache = new Map();
+function standBack(seed) {
+  if (standBackCache.has(seed % 4)) return standBackCache.get(seed % 4);
+  const c = document.createElement('canvas'); c.width = 512; c.height = 512; const g = c.getContext('2d');
+  g.fillStyle = '#b9bdc2'; g.fillRect(0, 0, 512, 512);
+  for (let y = 0; y < 512; y += 64) { g.fillStyle = y % 128 ? '#c3c7cc' : '#aeb3b9'; g.fillRect(0, y + 2, 512, 60); }      // paneles
+  g.fillStyle = 'rgba(0,0,0,0.25)'; for (let y = 0; y < 512; y += 64) g.fillRect(0, y, 512, 2);
+  // franja de ventilación (rejilla) a media altura
+  g.fillStyle = '#4a4f55'; g.fillRect(0, 300, 512, 40); g.fillStyle = '#6a7077'; for (let x = 0; x < 512; x += 8) g.fillRect(x, 300, 3, 40);
+  // pilares
+  for (const x of [0, 256]) { g.fillStyle = '#6d737a'; g.fillRect(x, 0, 26, 512); g.fillStyle = 'rgba(255,255,255,0.18)'; g.fillRect(x + 3, 0, 4, 512); }
+  // escalera en zigzag entre pilares
+  g.strokeStyle = '#3d4248'; g.lineWidth = 5;
+  g.beginPath(); for (let k = 0; k < 6; k++) { const y0 = 470 - k * 72; g.moveTo(60, y0); g.lineTo(200, y0 - 60); } g.stroke();
+  g.lineWidth = 2; g.beginPath(); for (let k = 0; k < 6; k++) { const y0 = 455 - k * 72; g.moveTo(60, y0); g.lineTo(200, y0 - 60); } g.stroke();
+  // lona de patrocinador arriba
+  const [name, bg, fg] = [['NEURAL', '#0B1B3A', '#5CE1E6'], ['APEX OIL', '#D40000', '#FFFFFF'], ['GRIDLINE', '#111111', '#FFD400'], ['ORBITAL', '#0D47A1', '#FFFFFF']][seed % 4];
+  g.fillStyle = bg; g.fillRect(0, 18, 512, 92); g.fillStyle = fg; g.font = 'bold 64px sans-serif'; g.textAlign = 'center';
+  // (al revés en el lienzo: la trasera se ve desde fuera, por la otra cara del muro, que está hecho para leerse desde la pista)
+  g.save(); g.scale(-1, 1); g.fillText(name, -256, 88); g.restore();
+  g.fillStyle = 'rgba(0,0,0,0.3)'; g.fillRect(0, 108, 512, 4);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  const m = new THREE.MeshStandardMaterial({ map: t, roughness: 0.75, side: THREE.DoubleSide });
+  standBackCache.set(seed % 4, m); return m;
 }
 
 function checkTex() {

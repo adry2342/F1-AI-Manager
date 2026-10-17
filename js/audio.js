@@ -150,6 +150,15 @@ export class EngineAudio {
     reverbLP.connect(reverbGain);
     reverbGain.connect(master);
 
+    // túnel: ecos cortos entre las paredes (dos retardos con realimentación, apagados por arriba) que suben al entrar
+    const tunnelIn = this.tunnelIn = ctx.createGain();
+    const td1 = ctx.createDelay(0.5), td2 = ctx.createDelay(0.5); td1.delayTime.value = 0.043; td2.delayTime.value = 0.067;
+    const tfb = ctx.createGain(); tfb.gain.value = 0.45;
+    const tLP = ctx.createBiquadFilter(); tLP.type = 'lowpass'; tLP.frequency.value = 2400;
+    const tunnelWet = this.tunnelWet = ctx.createGain(); tunnelWet.gain.value = 0;
+    tunnelIn.connect(td1); td1.connect(tLP); tLP.connect(td2); td2.connect(tfb); tfb.connect(td1);
+    tLP.connect(tunnelWet); td2.connect(tunnelWet); tunnelWet.connect(master);
+
     const whiteBuf = this._makeNoiseBuffer(ctx, 2.0, false);
     const pinkBuf = this._makeNoiseBuffer(ctx, 2.0, true);
 
@@ -240,6 +249,7 @@ export class EngineAudio {
     }
     engineGain.connect(master);
     engineGain.connect(convolver);
+    engineGain.connect(this.tunnelIn);
 
     // Textura mecánica de combustión (AM noise rasp)
     const raspNoise = ctx.createBufferSource();
@@ -677,11 +687,14 @@ export class EngineAudio {
           ? 0.28
           : 0.30 * distAtten;
 
+    const tk = this.tunnel || 0;                     // 0..1: la cámara dentro del túnel (coast.js)
+    masterVol *= 1 + 0.22 * tk;
     if (isMuted) masterVol = 0;
     this.master.gain.setTargetAtTime(masterVol, t, 0.25);
+    this.tunnelWet.gain.setTargetAtTime(isMuted ? 0 : 0.6 * tk, t, 0.08);
 
     // Reverberación de circuito (seca en cabina, espaciosa en planos exteriores)
-    const reverbVol = isMuted || onboard ? 0 : (cam === 'track' ? 0.35 : cam === 'heli' ? 0.36 : 0.16);
+    const reverbVol = isMuted ? 0 : Math.max(onboard ? 0 : (cam === 'track' ? 0.35 : cam === 'heli' ? 0.36 : 0.16), 0.42 * tk);
     this.reverbGain.gain.setTargetAtTime(reverbVol, t, 0.25);
 
     if (!car) return;

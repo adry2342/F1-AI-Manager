@@ -87,7 +87,7 @@ export class UI {
       const k = e.key.toLowerCase();
       if (k === 'a') this.dir.setAuto(!(this.dir.auto && !this.dir.lockFocus));
       else if (k === 'p') this.dir.setAutoDriver(!this.dir.lockFocus);
-      else if (k >= '1' && k <= '8') this.dir.setType(CAM_TYPES[+k - 1]);
+      else if (k >= '1' && k <= '9') this.dir.setType(CAM_TYPES[+k - 1]);
       else if (k === '[' || k === 'arrowleft') this.cycle(-1);
       else if (k === ']' || k === 'arrowright') this.cycle(1);
       else if (k === ' ') { e.preventDefault(); this.app.reqSpeed(this.app.speed === 0 ? this.app.lastSpeed || 1 : 0); }
@@ -120,6 +120,7 @@ export class UI {
     $('bAutoD').classList.toggle('on', !!this.dir.lockFocus);
     $('bSound').classList.toggle('on', !!this.app.audio?.on); $('bSound').textContent = this.app.audio?.on ? 'Sonido ON' : 'Sonido OFF';
     document.querySelectorAll('[data-cam]').forEach((b) => b.classList.toggle('on', b.dataset.cam === this.dir.type));
+    document.body.dataset.cam = this.dir.type;   // (la T-cam tiene el volante abajo, donde van las tarjetas de sectores)
     document.querySelectorAll('[data-speed]').forEach((b) => b.classList.toggle('on', +b.dataset.speed === this.app.speed));
     const f = this.dir.focus; $('focusLbl').textContent = f ? f.code : '—';
     $('camLabel').textContent = `${CAM_LABEL[this.dir.type]} · ${f ? f.drv.last : ''}${this.dir.lockFocus ? ' · auto piloto' : this.dir.auto ? ' · auto' : ''}`;

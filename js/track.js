@@ -58,6 +58,18 @@ const FOREST = [[600, 0, 35], [627, -27, 35], [672, -27, 35], [699, 0, 35], [110
 // por Blanchimont de vuelta a la chicane y a meta
 const FOREST_Y = [[0, 28], [945, 29], [1174, 25], [1350, 5], [1411, 5], [1580, 22], [1755, 30], [1971, 31], [2228, 25], [2565, 15], [2835, 10], [3308, 0], [3645, -5], [3983, -8], [4252, -8], [4590, 0], [4995, 10], [5400, 19], [5670, 24], [6210, 28]];
 
+// Costa a mediodía (Punta Serena): recta de meta en lo alto del acantilado, bajada al puerto con una horquilla colgada
+// sobre el mar, muelle, túnel en curva bajo el pueblo, chicane a la salida, subida por la costa sur con crestas ciegas,
+// horquilla del faro, zona revirada por el interior y curva final larga. Diseñado como tortuga (tramos y arcos) y
+// cerrado con la recta previa a la última curva.
+const COAST = [[1010, 0, 60], [1010, 266.5, 95], [1253.8, 355.3, 24], [1240, 399.1, 24], [1024.3, 341.3, 55], [891.8, 705.2, 300], [749.2, 916.6, 230], [280.3, 867.3, 22], [248, 905, 22], [-11.9, 855.4, 160], [-201.9, 932.2, 75], [-395.3, 770, 130], [-726.8, 770, 26], [-730.2, 721.6, 26], [-545.6, 695.7, 55], [-521.1, 496.2, 70], [-255.2, 482.3, 140], [-89.3, 566.8, 30], [-61, 516.9, 30], [-277.5, 381.6, 120], [-346.5, 275.4, 55], [-633.9, 187.5, 110], [-605.9, 0, 110]];
+// altimetría: meta arriba (40 m), cresta ciega antes de la 1, bajada al puerto (4 m), túnel casi llano, subida por la
+// costa sur con otra cresta (T9), el faro a 30 m, lo más alto en el interior (46 m) y compresión en la 16
+const COAST_Y = [[0, 40], [700, 41], [900, 44], [1031, 38], [1287, 28], [1519, 20], [1762, 8], [1850, 4], [2050, 4], [2450, 6], [2810, 8], [3093, 14], [3212, 22], [3291, 20], [3532, 26], [3897, 30], [4126, 33], [4253, 40], [4412, 46], [4567, 42], [4758, 36], [5006, 30], [5150, 33], [5493, 39]];
+// línea de costa (x, z): el mar al norte de la recta, el puerto al este del muelle, la costa sur y el cabo del faro;
+// por el oeste sigue la tierra firme. 'quay' = el borde del muelle, paralelo a la pista (meta.quay: s0, s1, metros desde el eje)
+const COAST_LAND = [[-9000, -1300], [-2700, -420], [-1700, -250], [-900, -190], [-600, -150], [-200, -185], [200, -160], [600, -190], [950, -150], [1150, -120], [1290, 0], [1380, 170], [1395, 330], [1345, 430], [1220, 428], [1090, 424], 'quay', [990, 700], [1040, 745], [1130, 790], [1230, 860], [1180, 960], [900, 990], [500, 1000], [100, 975], [-250, 1040], [-560, 880], [-760, 860], [-900, 900], [-960, 760], [-890, 560], [-1050, 380], [-1600, 450], [-2700, 800], [-9000, 1700]];
+
 export const CIRCUITS = {
   gp: { id: 'gp', name: 'Neural Park', place: 'Circuito permanente · de día', laps: 20 },
   urban: { id: 'urban', name: 'Porto Cidade', place: 'Urbano rápido junto al puerto · de día', urban: true, poly: URBAN, elev: 0.35 },
@@ -67,6 +79,15 @@ export const CIRCUITS = {
     narrow: [[1250, 1640, 6.2], [3480, 4040, 6.5]],    // estrecha en Eau Rouge-Les Combes y en Stavelot
     // donde más se salían y golpeaban (medido): más escapatoria (de grava: con asfalto llegaban más rápido al muro)
     runoff: [[4, 10], [6, 9], [8, 10], [13, 8], [16, 8], [17, 9], [18, 9], [20, 10], [22, 14]] },
+  coast: { id: 'coast', name: 'Punta Serena', place: 'Costa · a mediodía', coast: true, poly: COAST, yProf: COAST_Y, land: COAST_LAND, pitK: 0.8, cornerKerbs: true,
+    tunnel: [2040, 2460],                                   // túnel bajo el pueblo (s)
+    quay: [1795, 2040, 22],                                 // muelle: borde del agua a 22 m del borde de la pista
+    narrow: [[1830, 2520, 7.6]],                            // muelle y túnel: más estrecho, como una calle
+    // muros pegados (metros desde el borde: izquierda, derecha): muelle, túnel y su salida
+    walls: [[1790, 2040, 3.2, 2.6], [2040, 2460, 1.3, 1.3], [2460, 2580, 2.6, 3]],
+    // la 1 (frenada desde lo más rápido, cuesta abajo) es donde más se salían: más escapatoria, de grava (medido en 2
+    // fines de semana: golpes contra el muro en la 1, 11 -> 3-4; con asfalto llegaban más rápido al muro)
+    runoff: [[1, 14, 1], [6, 18, 1], [10, 8], [11, 6]] },
 };
 
 // Polígono con esquinas redondeadas -> puntos de control densos (arcos cada ~8 m, rectas cada ~60 m)
@@ -405,7 +426,7 @@ function buildRunoff(T) {
   for (let i = 0; i < M; i++) { const k = T.k[T.idx(i * STEP)]; kAbs[i] = Math.abs(k); kSgn[i] = k; }
   const kS = smooth(kSgn, 25, 2);
   const BL = new Float32Array(M), BR = new Float32Array(M), typeL = new Uint8Array(M), typeR = new Uint8Array(M);
-  // tipos: 0 hierba, 1 grava, 2 asfalto pintado, 3 zona de boxes
+  // tipos: 0 hierba, 1 grava, 2 asfalto pintado, 3 zona de boxes, 4 muro de calle (sin escapatoria)
   for (let i = 0; i < M; i++) {
     const s = i * STEP;
     const k = kS[i];
@@ -443,6 +464,19 @@ function buildRunoff(T) {
       arr[i] += extra * w; if (ty != null && w > 0.3) types[i] = ty;
     }
   }
+  // muros pegados a la pista (meta.walls: [s0, s1, izquierda, derecha], metros desde el borde), con 30 m de transición;
+  // tipo 4 = muro de calle (sin escapatoria ni tecpro)
+  for (const [a, b, wl, wr] of T.meta.walls || []) {
+    const len = T.ahead(a, b);
+    for (let i = 0; i < M; i++) {
+      const s = i * STEP, u = T.ahead(T.wrap(a - 30), s); if (u > len + 60) continue;
+      const f = Math.min(1, u / 30, (len + 60 - u) / 30), W = T.hwAt(s);
+      BL[i] = BL[i] * (1 - f) + Math.min(BL[i], W + wl) * f; BR[i] = BR[i] * (1 - f) + Math.min(BR[i], W + wr) * f;
+      if (f > 0.5) { typeL[i] = 4; typeR[i] = 4; }
+    }
+  }
+  const tun = T.meta.tunnel;
+  T.inTunnel = (s) => !!tun && between(T, s, tun[0], tun[1]);
   // no invadir otras partes del circuito: limitar por distancia a muestras lejanas
   const cell = 40, grid = new Map();
   const key = (x, z) => Math.floor(x / cell) * 100003 + Math.floor(z / cell);

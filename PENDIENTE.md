@@ -1,5 +1,52 @@
 # Pendiente
 
+## Circuito nuevo: Punta Serena (17/10)
+Costa a mediodía, 6,16 km, 18 curvas, de 4 a 46 m de altura. Trazado aprobado por él (mapa en `propuestas/mapa-punta-serena.png`).
+- Recta de meta en lo alto del acantilado con cresta ciega antes de la 1; bajada al puerto con horquilla sobre el mar (3);
+  muelle estrecho entre casas de colores y barcos; túnel en curva de 420 m bajo el pueblo (5); chicane a la salida (6-7);
+  subida por la costa sur con otra cresta (9); horquilla del faro (11); zona revirada del interior (12-17); curva final larga.
+- Decorado (js/coast.js): acantilados con estratos, mar con color según la profundidad y espuma, puerto (muelle de sillería,
+  pantalanes, espigón de pescadores, rompeolas con balizas, yates fondeados con gente), pueblo blanco escalonado (~1100 casas,
+  iglesia con cúpula, fila tipo Portofino junto a la pista), túnel (azulejo, luces, ventiladores, bocas con rótulo y gente
+  arriba, trincheras), faro, hotel con piscina y helipuerto, villas con piscina, molinos que giran, torre vigía, ermita y
+  cementerio, 3 playas (sombrillas, hamacas, bañistas, chiringuito, socorrista, boyas), pinares, olivares, cipreses, pitas,
+  carreteras con coches circulando, veleros/lanchas/ferry navegando, gaviotas, islas y tierra firme al fondo.
+- Túnel: dentro no llega el sol, la luz baja de golpe y el ojo se adapta (exposición) en ~0,6 s; al salir, deslumbra.
+  Eco en el motor (dos retardos). Cámaras de pista colgadas del techo; el dron espera a la salida.
+- Escapatoria de grava más ancha en la 1 (golpes contra el muro 11 → 3-4 por fin de semana).
+- Revisión tras su prueba (17/10): fuera el terreno y las casas que se metían dentro de los muros (medido: 0 puntos);
+  detrás de cada muro, franja de terreno a medida y muro de contención de piedra donde la ladera sube; colina por encima
+  del túnel (antes había una zanja); caliza en estratos en triplanar en lo empinado; cielo de verano más azul y con más
+  contraste; bancales y más verde en el pueblo; aparcamientos pegados al terreno; trasera de las gradas con estructura y lona.
+- Plano nuevo «Vista» (tecla 8): cámara alta y lejana mirando hacia fuera del circuito; en libres sale a menudo (abre
+  la sesión con uno); en el túnel espera sobre la salida.
+- Coche: hueco del cockpit de verdad (la carrocería se hunde en una bañera negra; el volante ya no la atraviesa).
+- T-cam: las tarjetas de sectores suben por encima del volante.
+- Segunda revisión (17/10 noche):
+  - Túnel: sobre cada boca había una raja en la colina por la que se veía el cielo (se quitaban los triángulos que tocaban
+    la trinchera); ahora la colina baja en cortado hasta una explanada de piedra encima de la boca.
+  - Chicane 6-7 más cerrada (se hacía recta sin frenar): frenan de ~210 a ~85 km/h. Ideal regenerada (100,76 s).
+  - Gradas con laterales (de lado se veía a través); pantallas detrás de las gradas y por encima del tejado.
+  - Vista: el arcén ya no parpadea con la hierba/grava (desplazamiento de profundidad y plano cercano a 2 m en esa cámara).
+  - Paddock: explanada llana a la altura de la pista y el asfalto pegado a ella (los camiones atravesaban la plataforma).
+  - Árboles nuevos (piñonero, carrasco, olivo, ciprés, encina, limonero/naranjo, palmera curva) y colocados con sentido:
+    pinares en manchas y en el borde del acantilado, olivares en bancales con tapia y cortijo, hileras en las carreteras,
+    frutales en los patios del pueblo (ninguno dentro de una casa), palmeras detrás de las playas.
+  - Casas: teja árabe, pretiles en las azoteas, balcones de hierro, chimeneas, toldos en el muelle, pie de pared oscurecido.
+  - Carreteras: anillo por toda la costa (montes → playa del noroeste → costa norte → hotel; paddock → pueblo → por encima
+    del túnel → paseo de la playa → faro → istmo → montes), carretera de montaña con mirador en tierra firme y calles del
+    pueblo que serpentean. Coches de 4 tipos (utilitario, berlina, furgoneta, moto) que no se alcanzan ni dan saltos.
+  - Carreteras apoyadas en el punto más alto del terreno bajo cada vértice, con arcén que se hunde (medido: 0 puntos
+    con el suelo asomando).
+- Volante vertical (estaba inclinado 29° hacia el piloto).
+- Curva 6 (chicane a la salida del túnel): escapatoria de grava 18 m más honda por fuera (la grada se retira con ella).
+  Medido en 4 fines de semana: golpes contra el muro en la 6, 16 (12 fuertes, 3 accidentes) -> 0.
+- Edificio de boxes nuevo en todos los circuitos (como Yas Marina / Lusail): garajes con dintel y rótulo, persianas y
+  entradas de vidrio entre ellos, balcón de oficinas en la 1ª, Paddock Club con terraza volada y vidrio inclinado en la 2ª,
+  cubierta en voladizo con terraza y máquinas, aletas que marcan los módulos, franja del color de cada equipo, gente en
+  las terrazas, podio volado sobre el pit lane, escaleras de vidrio en los extremos, entradas de equipo por el paddock
+  y torre de control nueva. De noche las plantas se iluminan.
+
 ## Por dónde vamos (17/10)
 Hecho y probado (e2e 57/57 y 72/72):
 - Interfaz entera en Caelestia sin color (Figtree, vidrio, píldoras); colores de estado vivos (sectores, banderas, avisos, pedales).

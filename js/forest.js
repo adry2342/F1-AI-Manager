@@ -11,7 +11,7 @@ const hash = (x) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Mat
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
 // lista de transformaciones -> InstancedMesh
-function inst(scene, geo, mat, list, { shadow = false, colors = null } = {}) {
+export function inst(scene, geo, mat, list, { shadow = false, colors = null } = {}) {
   if (!list.length) return null;
   const im = new THREE.InstancedMesh(geo, mat, list.length);
   const col = new THREE.Color();
@@ -25,7 +25,7 @@ function inst(scene, geo, mat, list, { shadow = false, colors = null } = {}) {
 
 // lo mismo, repartido en bloques por zona: cada bloque se descarta solo si queda fuera de cámara (o de la sombra).
 // Con una sola malla de 30 000 árboles la GPU los dibujaba todos en cada fotograma: 31 FPS frente a 73 en Monte Alto
-function chunked(scene, geo, mat, list, { cell = 250, shadow = false } = {}) {
+export function chunked(scene, geo, mat, list, { cell = 250, shadow = false } = {}) {
   const groups = new Map();
   for (const p of list) { const k = Math.floor(p.x / cell) * 4096 + Math.floor(p.z / cell); let g = groups.get(k); if (!g) groups.set(k, (g = [])); g.push(p); }
   for (const g of groups.values()) inst(scene, geo, mat, g, { shadow });
@@ -33,20 +33,21 @@ function chunked(scene, geo, mat, list, { cell = 250, shadow = false } = {}) {
 
 // varias piezas en una sola geometría (una sola llamada de dibujo por bloque): color por vértice y «tint» (1 = la pieza
 // toma el color de la instancia: copa, ropa; 0 = color propio: tronco, piernas, cara)
-function merged(parts) {
+export function merged(parts) {
   const pos = [], nor = [], col = [], tin = [];
   for (const { g, c = [1, 1, 1], tint = 1 } of parts) {
     const ng = g.index ? g.toNonIndexed() : g; if (!ng.attributes.normal) ng.computeVertexNormals();
     const P = ng.attributes.position, N = ng.attributes.normal;
-    for (let i = 0; i < P.count; i++) { pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N.getX(i), N.getY(i), N.getZ(i)); col.push(c[0], c[1], c[2]); tin.push(tint); }
+    // (c puede ser una función de la posición: degradados, sombra bajo las copas)
+    for (let i = 0; i < P.count; i++) { const cc = typeof c === 'function' ? c(P.getX(i), P.getY(i), P.getZ(i)) : c; pos.push(P.getX(i), P.getY(i), P.getZ(i)); nor.push(N.getX(i), N.getY(i), N.getZ(i)); col.push(cc[0], cc[1], cc[2]); tin.push(tint); }
   }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setAttribute('tint', new THREE.Float32BufferAttribute(tin, 1));
   return g;
 }
-const lin = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
-function tintMat(opts) {
+export const lin = (hex) => { const c = new THREE.Color(hex); return [c.r, c.g, c.b]; };
+export function tintMat(opts) {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, ...opts });
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute float tint;').replace('#include <color_vertex>', `
@@ -62,7 +63,7 @@ function tintMat(opts) {
 }
 
 // textura de banderas: 8 diseños en una rejilla 4x2 (tricolores, bandas, cuadros, colores de equipo)
-function flagAtlas() {
+export function flagAtlas() {
   const c = document.createElement('canvas'); c.width = 512; c.height = 192; const g = c.getContext('2d');
   const W = 128, H = 96;
   const designs = [

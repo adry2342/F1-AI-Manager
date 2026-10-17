@@ -9,8 +9,8 @@ import { TEAMS } from './teams.js';
 
 const SESSIONS_CUT = { Q1: SESSIONS.Q1.cut, Q2: SESSIONS.Q2.cut, Q3: 0 };
 
-export const CAM_TYPES = ['chase', 'cockpit', 'tcam', 'nose', 'rear', 'heli', 'track', 'free'];
-export const CAM_LABEL = { chase: 'Exterior', cockpit: 'Cockpit', tcam: 'T-Cam', nose: 'Morro', rear: 'Trasera', heli: 'Dron', track: 'Pista', free: 'Libre' };
+export const CAM_TYPES = ['chase', 'cockpit', 'tcam', 'nose', 'rear', 'heli', 'track', 'wide', 'free'];
+export const CAM_LABEL = { chase: 'Exterior', cockpit: 'Cockpit', tcam: 'T-Cam', nose: 'Morro', rear: 'Trasera', heli: 'Dron', track: 'Pista', wide: 'Vista', free: 'Libre' };
 
 // peso de una posición: arriba vale mucho más (victoria, podio, puntos)
 const posW = (p) => (p === 1 ? 1 : p <= 3 ? 0.85 : p <= 6 ? 0.7 : p <= 10 ? 0.55 : p <= 15 ? 0.33 : 0.22);
@@ -57,6 +57,11 @@ export class Director {
     }
     const stepS = night ? 150 : 230;
     for (let s = 0; s < T.L; s += stepS) add(s + 60, (Math.floor(s / stepS) % 2 ? 1 : -1), 9 + (Math.floor(s / 100) % 3) * 2, 4, 'recta');
+    // túnel: cámaras colgadas del techo, alternando lados (las de fuera no ven dentro: world.solidAt)
+    if (T.meta.tunnel) {
+      const [a, b] = T.meta.tunnel; let n = 0;
+      for (let s = a + 35; s < b - 10; s += 80) { const side = n++ % 2 ? 1 : -1; T.pos(s, side * (this.world.barrier(s, side) - 0.9), P); cams.push({ s: T.wrap(s), pos: new THREE.Vector3(P[0], P[1] + 6.2, P[2]), side, tag: 'tunel' }); }
+    }
     // meta: una antes de la línea (se ve llegar el coche) y otra justo después, en el lado de la tribuna
     add(-70, 1, 12, 4, 'meta'); add(30, 1, 10, 4, 'meta');
     // pit lane
@@ -76,7 +81,7 @@ export class Director {
       }
       c.cov = best;
     }
-    const PRI = { meta: 0, curva: 1, frenada: 2, recta: 3 }, count = new Uint8Array(NB), kept = [];
+    const PRI = { meta: 0, curva: 1, tunel: 1, frenada: 2, recta: 3 }, count = new Uint8Array(NB), kept = [];
     for (const c of cams.filter((c) => c.tag !== 'boxes').sort((a, b) => PRI[a.tag] - PRI[b.tag] || b.cov.length - a.cov.length)) {
       if (c.cov.length < 7) continue;
       if (c.cov.some((b) => count[b] >= 2)) continue;
@@ -272,7 +277,7 @@ export class Director {
     // de Q1 dejaba el director clavado en un coche todo Q2 y Q3)
     if (this.storySess !== ss) {
       this.storySess = ss; this.qHold = 0; this.storyT = null; this.lastFill = undefined; this.seen = []; this.story = null; this.qLap = null; this.lineShot = -1;
-      this.openCar = null; this.openDone = false;
+      this.openCar = null; this.openDone = false; this.openWide = false;
     }
     // arranque: la realización se queda con el primero que sale de boxes durante toda su vuelta de salida, en vez de
     // ir saltando de un coche a otro según van saliendo
@@ -287,7 +292,8 @@ export class Director {
       else if (c) {
         if (this.focus !== c) {
           this.focus = c; this.story = { kind: 'pitexit', car: c, t0: sim.t }; this.storyT = sim.t; this.qLap = c.lap; this.shotN = 0;
-          this.seen[c.i] = sim.t; this.reason = 'pit'; this.cutTo(this.sessionShot({ kind: 'pitexit' }));
+          // (en libres, el primer plano es una vista amplia del circuito y su entorno)
+          this.seen[c.i] = sim.t; this.reason = 'pit'; if (isFP(ss.id) && !this.openWide) { this.openWide = true; this.cutTo('wide', 10); } else this.cutTo(this.sessionShot({ kind: 'pitexit' }));
         } else this.shotCycleS({ kind: 'filler', toLine: 1e9 });
         return true;
       }
@@ -442,6 +448,9 @@ export class Director {
   // plano para una historia: una vuelta lanzada alterna fuera (pista) y dentro (cockpit, T-cam, morro)
   sessionShot(st) {
     const r = Math.random(), n = this.shotN || 0;
+    // vistas amplias: el circuito y lo que lo rodea (en libres, a menudo; en clasificación, alguna; nunca en el final de vuelta)
+    const fp = isFP(this.sim.session?.id), calm = !st || ['filler', 'traffic', 'pitexit'].includes(st.kind) || (st.kind === 'hotlap' && st.toLine > 1500);
+    if (calm && this.type !== 'wide' && Math.random() < (fp ? 0.3 : 0.08)) return 'wide';
     if (!st) return r < 0.45 ? 'track' : r < 0.8 ? 'tcam' : r < 0.9 ? 'chase' : 'heli';
     switch (st.kind) {
       case 'mistake': return r < 0.7 ? 'track' : 'heli';
@@ -496,7 +505,7 @@ export class Director {
     else if (has('mistake') || has('crash') || has('event')) t = r < 0.65 ? 'track' : 'heli';
     else if (has('side') || has('battle')) t = rear && r < 0.45 ? 'rear' : r < 0.7 ? 'tcam' : r < 0.93 ? 'track' : 'cockpit';
     else if (has('purple') || has('lap')) t = r < 0.45 ? 'tcam' : r < 0.82 ? 'track' : r < 0.92 ? 'cockpit' : 'chase';
-    else t = rear && r < 0.35 ? 'rear' : r < 0.55 ? 'track' : r < 0.85 ? 'tcam' : r < 0.92 ? 'chase' : r < 0.96 ? 'cockpit' : 'heli';
+    else t = rear && r < 0.35 ? 'rear' : r < 0.55 ? 'track' : r < 0.85 ? 'tcam' : r < 0.92 ? 'chase' : r < 0.96 ? 'cockpit' : r < 0.985 ? 'heli' : 'wide';
     if (t === avoid && t !== 'track') t = avoid === 'tcam' ? 'track' : 'tcam';
     if (t === 'rear' && !rear) t = 'tcam';
     return t;
@@ -646,6 +655,17 @@ export class Director {
             cam.up.set(0, 1, 0); this.smoothLook.copy(this.pc).addScaledVector(f2, 18); cam.lookAt(this.smoothLook); fov = 48; break;
           }
         }
+        // túnel: el dron no puede seguirlo dentro; espera en lo alto, frente a la boca de salida, a que salga
+        const tun = this.T.meta.tunnel;
+        if (tun && this.T.inTunnel(this.focus.s) && !this.focus.inPit) {
+          const T = this.T, P = [0, 0, 0];
+          T.pos(T.wrap(tun[1] + 80), 0, P); cam.position.set(P[0], P[1] + 24, P[2]);
+          T.pos(T.wrap(tun[1] - 4), 0, P); this.smoothLook.set(P[0], P[1] + 4, P[2]);
+          cam.up.set(0, 1, 0); cam.lookAt(this.smoothLook); fov = 38;
+          this.droneAngle = Math.atan2(cam.position.x - P[0], cam.position.z - P[2]);   // al salir, la órbita sigue desde aquí
+          this.droneT = 0; this.droneLift = 0;
+          break;
+        }
         // dron: orbita alrededor del coche, sube y se acerca despacio; si algo lo tapa (edificios, gradas) gira más rápido y sube
         if (this.first || this.droneAngle == null) {
           this.droneAngle = Math.random() * Math.PI * 2;
@@ -666,6 +686,46 @@ export class Director {
         cam.up.set(0, 1, 0);
         cam.lookAt(this.smoothLook);
         fov = 54;
+        break;
+      }
+      case 'wide': {
+        // vista amplia: cámara alta y lejana (240-500 m, 60-150 m sobre el coche), del lado de dentro del circuito mirando
+        // hacia fuera (al paisaje y al mar), quieta como un helicóptero muy alto que va girando para seguir al coche
+        const T = this.T, tgt = v2.copy(carPos).setY(carPos.y + 1);
+        const tun = T.meta.tunnel;
+        if (tun && T.inTunnel(this.focus.s)) {       // en el túnel: desde lo alto, la boca de salida
+          const P = [0, 0, 0]; T.pos(T.wrap(tun[1] + 160), 0, P); cam.position.set(P[0], P[1] + 70, P[2]);
+          T.pos(T.wrap(tun[1] + 10), 0, P); cam.up.set(0, 1, 0); cam.lookAt(P[0], P[1] + 3, P[2]); fov = 42; this.wideP = null; break;
+        }
+        const pick = () => {
+          if (!this.trkC) { let sx = 0, sz = 0, n = 0; for (let i = 0; i < T.N; i += 20) { sx += T.x[i]; sz += T.z[i]; n++; } this.trkC = [sx / n, sz / n]; }
+          const out = Math.atan2(carPos.x - this.trkC[0], carPos.z - this.trkC[1]);
+          for (let k = 0; k < 24; k++) {
+            if (k >= 12) { const a = Math.random() * 6.283, D = 300 + Math.random() * 300, x = carPos.x + Math.sin(a) * D, z = carPos.z + Math.cos(a) * D; const p = new THREE.Vector3(x, Math.max(this.world.groundY(x, z) + 40, carPos.y + 140 + Math.random() * 120), z); if (!this.world.losBlocked(p, tgt)) { this.widePano = true; return p; } continue; }
+            // dos tipos: panorámica (lejos, alta y abierta) y teleobjetivo (más cerca y cerrada)
+            const pano = Math.random() < 0.55, a = out + Math.PI + (Math.random() - 0.5) * 2.4, D = pano ? 340 + Math.random() * 320 : 220 + Math.random() * 180;
+            const x = carPos.x + Math.sin(a) * D, z = carPos.z + Math.cos(a) * D;
+            const p = new THREE.Vector3(x, Math.max(this.world.groundY(x, z) + 25, carPos.y + (pano ? 90 + Math.random() * 120 : 50 + Math.random() * 60)), z);
+            if (!this.world.losBlocked(p, tgt)) { this.widePano = pano; return p; }
+          }
+          return null;
+        };
+        // (tapado un momento por un árbol o un poste no se corta: solo si sigue tapado más de 1,2 s)
+        this.wideLosT = (this.wideLosT || 0) - dt;
+        let need = this.first || !this.wideP || this.wideP.distanceTo(carPos) > 900;
+        if (!need && this.wideLosT <= 0) { this.wideLosT = 0.4; this.wideBlk = this.world.losBlocked(this.wideP, tgt) ? (this.wideBlk || 0) + 0.4 : 0; need = this.wideBlk > 1.2; }
+        if (need) {
+          const p = pick();
+          if (!p) { if (!this.wideP) { this.type = 'heli'; this.first = true; break; } }   // (si no hay sitio, se queda donde estaba)
+          else {
+            this.wideP = p; this.wideFov = this.widePano ? 46 + Math.random() * 10 : 24 + Math.random() * 10; this.wideLook = tgt.clone(); this.wideDrift = new THREE.Vector3((Math.random() - 0.5) * 6, 0, (Math.random() - 0.5) * 6);
+            if (this.first) this.shotLen = Math.max(this.shotLen, 8 + Math.random() * 3);
+            this.wideBlk = 0;
+          }
+        }
+        this.wideP.addScaledVector(this.wideDrift, dt);
+        this.wideLook.lerp(v3.copy(tgt).addScaledVector(fwd, 12), this.first ? 1 : 1 - Math.exp(-dt * 3));
+        cam.position.copy(this.wideP); cam.up.set(0, 1, 0); cam.lookAt(this.wideLook); fov = this.wideFov;
         break;
       }
       case 'track': {
@@ -738,7 +798,10 @@ export class Director {
       }
     }
     this.fov = this.first ? fov : lerp(this.fov, fov, this.type === 'track' ? 1 - Math.exp(-dt * 4) : 1);
-    if (Math.abs(cam.fov - this.fov) > 0.01) { cam.fov = this.fov; cam.updateProjectionMatrix(); }
+    // plano cercano: en las vistas lejanas, más lejos (con 0,08 m no había precisión de profundidad a 300 m y el arcén
+    // parpadeaba con la hierba y la grava de debajo)
+    const near = this.type === 'wide' ? 2 : this.type === 'heli' ? 0.5 : 0.08;
+    if (Math.abs(cam.fov - this.fov) > 0.01 || cam.near !== near) { cam.fov = this.fov; cam.near = near; cam.updateProjectionMatrix(); }
     this.first = false;
   }
 

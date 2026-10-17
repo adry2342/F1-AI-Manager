@@ -154,7 +154,8 @@ button:focus-visible { outline: 2px solid var(--acc); outline-offset: 2px; }
 #battle .d { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-weight: 800; font-size: 17px; }
 #battle .d i { width: 5px; height: 22px; border-radius: 2px; }
 #battle .gap { padding: 6px 12px; font-weight: 700; font-size: 15px; display: grid; place-items: center; background: rgba(255,255,255,0.06); border-radius: 999px; }
-#qlive { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; gap: 8px; }
+#qlive { position: absolute; left: 50%; bottom: 74px; transform: translateX(-50%); display: flex; gap: 8px; transition: bottom 0.25s ease; }
+body[data-cam="tcam"] #qlive { bottom: 172px; }   /* en la T-cam, por encima del volante */
 #qlive .ql { width: 236px; background: var(--panel); backdrop-filter: var(--glass); -webkit-backdrop-filter: var(--glass); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; box-shadow: var(--shadow); cursor: pointer; padding: 6px; }
 #qlive .ql.focus { border-color: rgba(255,255,255,0.55); }
 #qlive .top { display: flex; align-items: center; height: 32px; gap: 8px; padding-right: 4px; }

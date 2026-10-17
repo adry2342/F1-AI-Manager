@@ -6,6 +6,7 @@ import { TEAMS } from './teams.js';
 import { HALF_W, between } from './track.js';
 import { buildUrban, buildNight, buildMountain } from './decor.js';
 import { buildForest } from './forest.js';
+import { buildCoast } from './coast.js';
 
 function rng(seed) { let a = seed >>> 0; return () => { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }; }
 const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(), v = new THREE.Vector3(), Y = new THREE.Vector3(0, 1, 0);
@@ -13,7 +14,7 @@ const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vecto
 export function buildScenery(T, scene, world, quality, sunDir) {
   const r = rng(4242);
   const occ = [];
-  const G = (x, z) => world.groundY(x, z);
+  const G = (x, z) => (world.coast ? world.meshY(x, z) : world.groundY(x, z));
   const maxB = (s) => Math.max(world.barrier(s, 1), world.barrier(s, -1));
   const clearOfTrack = (x, z, rad) => {
     const n = world.nearest(x, z, 6);
@@ -30,19 +31,20 @@ export function buildScenery(T, scene, world, quality, sunDir) {
     }
     return true;
   };
-  const free = (x, z, rad) => clearOfTrack(x, z, rad) && occ.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + rad);
+  const free = (x, z, rad) => clearOfTrack(x, z, rad) && occ.every((o) => Math.hypot(o.x - x, o.z - z) > o.r + rad) && !(world.isSea && world.isSea(x, z, rad));
   const claim = (x, z, rad) => occ.push({ x, z, r: rad });
+  for (const sp of world.screenSpots || []) claim(sp.x, sp.z, sp.r);
   const out = { update: () => {} };
-  const night = !!world.night, urban = !!world.urban, sunset = !!world.sunset, autumn = !!world.autumn;
-  const rural = !night && !urban && !sunset && !autumn;
+  const night = !!world.night, urban = !!world.urban, sunset = !!world.sunset, autumn = !!world.autumn, coast = !!world.coast;
+  const rural = !night && !urban && !sunset && !autumn && !coast;
 
   // -------------------------------------------------------------- cielo
   {
     const dome = new THREE.Mesh(new THREE.SphereGeometry(9000, 32, 16), new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: { sun: { value: sunDir.clone() }, night: { value: night ? 1 : 0 }, sunset: { value: sunset ? 1 : 0 }, cloud: { value: 0 } },
+      uniforms: { sun: { value: sunDir.clone() }, night: { value: night ? 1 : 0 }, sunset: { value: sunset ? 1 : 0 }, cloud: { value: 0 }, deep: { value: coast ? 1 : 0 } },
       vertexShader: 'varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }',
-      fragmentShader: `varying vec3 vDir; uniform vec3 sun; uniform float night; uniform float sunset; uniform float cloud;
+      fragmentShader: `varying vec3 vDir; uniform vec3 sun; uniform float night; uniform float sunset; uniform float cloud; uniform float deep;
         float h3(vec3 p){ return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
         void main(){
           if (night > 0.5) {
@@ -88,7 +90,8 @@ export function buildScenery(T, scene, world, quality, sunDir) {
           }
           float h = max(vDir.y, 0.0);
           vec3 zen = vec3(0.16, 0.36, 0.72), hor = vec3(0.70, 0.80, 0.90), gnd = vec3(0.55, 0.62, 0.66);
-          vec3 c = mix(hor, zen, pow(h, 0.55));
+          if (deep > 0.5) { zen = vec3(0.03, 0.17, 0.55); hor = vec3(0.42, 0.62, 0.86); gnd = vec3(0.30, 0.48, 0.66); }   // cielo limpio del Mediterráneo en verano
+          vec3 c = mix(hor, zen, pow(h, deep > 0.5 ? 0.4 : 0.55));
           if (vDir.y < 0.0) c = mix(hor, gnd, min(1.0, -vDir.y * 4.0));
           float s = max(dot(vDir, normalize(sun)), 0.0);
           c += vec3(1.0, 0.85, 0.6) * (pow(s, 600.0) * 6.0 + pow(s, 12.0) * 0.18) * (1.0 - cloud);
@@ -117,7 +120,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
     });
     out.cloudMat = cmat;
     const cx = (world.bb.x0 + world.bb.x1) / 2, cz = (world.bb.z0 + world.bb.z1) / 2;
-    for (let i = 0; i < (night ? 0 : 46); i++) {
+    for (let i = 0; i < (night ? 0 : coast ? 14 : 46); i++) {
       const s = new THREE.Sprite(cmat);
       const a = r() * Math.PI * 2, d = 800 + r() * 5000;
       s.position.set(cx + Math.cos(a) * d, 700 + r() * 900, cz + Math.sin(a) * d);
@@ -133,7 +136,20 @@ export function buildScenery(T, scene, world, quality, sunDir) {
   {
     const s0 = T.wrap(T.pit.boxes[0].s - 70), len = T.ahead(s0, T.wrap(T.pit.boxes[T.pit.boxes.length - 1].s + 90));
     const pav = new THREE.MeshStandardMaterial({ map: TX.asphalt(), color: 0xa7abb1, roughness: 0.95 });
-    world.along(s0, len, -150, -52, -0.05, pav, 9, 9);
+    if (coast) {
+      // costa: el suelo no sigue a la pista; el asfalto se pega a la malla del terreno (antes iba a la altura de la pista,
+      // flotando sobre la ladera, y los camiones y motorhomes, apoyados en el suelo, lo atravesaban)
+      pav.polygonOffset = true; pav.polygonOffsetFactor = -2; pav.polygonOffsetUnits = -2;
+      const nS = Math.ceil(len / 6), nD = Math.ceil(98 / 6), vp = [], uv = [], ix = [];
+      for (let a = 0; a <= nS; a++) for (let b = 0; b <= nD; b++) {
+        const s = s0 + (len * a) / nS, d = -150 + (98 * b) / nD; T.pos(T.wrap(s), d, P);
+        vp.push(P[0], world.meshY(P[0], P[2]) + 0.06, P[2]); uv.push(d / 9, s / 9);
+        if (a && b) { const k = a * (nD + 1) + b, k0 = k - nD - 1; ix.push(k0 - 1, k - 1, k0, k0, k - 1, k); }
+      }
+      const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.Float32BufferAttribute(vp, 3)); pg.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); pg.setIndex(ix); pg.computeVertexNormals();
+      if (pg.attributes.normal.getY(0) < 0) { for (let k = 0; k < ix.length; k += 3) [ix[k + 1], ix[k + 2]] = [ix[k + 2], ix[k + 1]]; pg.setIndex(ix); pg.computeVertexNormals(); }
+      const pm = new THREE.Mesh(pg, pav); pm.receiveShadow = true; scene.add(pm);
+    } else world.along(s0, len, -150, -52, -0.05, pav, 9, 9);
     for (let s = 0; s < len; s += 40) { const p = pos(s0 + s, -100); claim(p.x, p.z, 60); }
     TEAMS.forEach((team, k) => {
       const s = T.pit.boxes[k].s;
@@ -182,8 +198,11 @@ export function buildScenery(T, scene, world, quality, sunDir) {
   const carTop = new THREE.BoxGeometry(1.6, 0.6, 2.2); carTop.translate(0, 1.55, -0.2);
   const parked = [];
   const lot = (x, z, w, d, yaw) => {
-    const pm = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshStandardMaterial({ map: TX.asphalt(), color: 0x9a9ea4, roughness: 0.95 }));
-    pm.rotation.x = -Math.PI / 2; pm.rotation.z = yaw; pm.position.set(x, G(x, z) + 0.12, z); pm.receiveShadow = true; scene.add(pm);
+    // (pegado al terreno: plano en una ladera quedaba flotando o enterrado)
+    const pg = new THREE.PlaneGeometry(w, d, Math.ceil(w / 6), Math.ceil(d / 6)); pg.rotateX(-Math.PI / 2); pg.rotateY(yaw);
+    const pp = pg.attributes.position; for (let k = 0; k < pp.count; k++) { const vx = x + pp.getX(k), vz = z + pp.getZ(k); pp.setXYZ(k, vx, G(vx, vz) + 0.18, vz); }
+    pg.computeVertexNormals();
+    const pm = new THREE.Mesh(pg, new THREE.MeshStandardMaterial({ map: TX.asphalt(), color: 0x9a9ea4, roughness: 0.95, polygonOffset: true, polygonOffsetFactor: -2 })); pm.receiveShadow = true; scene.add(pm);
     const c = Math.cos(yaw), s = Math.sin(yaw);
     for (let a = -w / 2 + 3; a < w / 2 - 2; a += 2.8) for (let b = -d / 2 + 4; b < d / 2 - 3; b += 7.5) {
       if (r() < 0.18) continue;
@@ -213,13 +232,14 @@ export function buildScenery(T, scene, world, quality, sunDir) {
   if (night) buildNight(ctx);
   if (sunset) buildMountain(ctx);
   if (autumn) buildForest(ctx);
+  if (coast) out.coast = buildCoast(ctx);
   {
     const colors = [0xd32f2f, 0x1976d2, 0xfafafa, 0x212121, 0x9e9e9e, 0x388e3c, 0xfbc02d, 0x5d4037, 0x90a4ae, 0x0d47a1];
     const mat = new THREE.MeshStandardMaterial({ roughness: 0.35, metalness: 0.5 });
     const glassM = new THREE.MeshStandardMaterial({ color: 0x1b2530, roughness: 0.1, metalness: 0.8 });
     const im = new THREE.InstancedMesh(carGeo, mat, parked.length), it = new THREE.InstancedMesh(carTop, glassM, parked.length);
     const col = new THREE.Color();
-    parked.forEach(([x, z, yaw], k) => { m4.compose(v.set(x, G(x, z) + 0.12, z), q.setFromAxisAngle(Y, yaw), sc.set(1, 1, 1)); im.setMatrixAt(k, m4); it.setMatrixAt(k, m4); im.setColorAt(k, col.setHex(colors[Math.floor(r() * colors.length)])); });
+    parked.forEach(([x, z, yaw], k) => { m4.compose(v.set(x, G(x, z) + 0.18, z), q.setFromAxisAngle(Y, yaw), sc.set(1, 1, 1)); im.setMatrixAt(k, m4); it.setMatrixAt(k, m4); im.setColorAt(k, col.setHex(colors[Math.floor(r() * colors.length)])); });
     scene.add(im); scene.add(it);
   }
 
@@ -262,7 +282,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
       beach.scale.copy(lake.scale); beach.rotation.x = -Math.PI / 2; beach.position.set(best[0], y + 0.3, best[1]); scene.add(beach);
       claim(best[0], best[1], rad + 10);
     }
-    for (let t = 0; t < (night || sunset || autumn ? 0 : 300); t++) {
+    for (let t = 0; t < (night || sunset || autumn || coast ? 0 : 300); t++) {
       const x = world.bb.x0 + r() * (world.bb.x1 - world.bb.x0), z = world.bb.z0 + r() * (world.bb.z1 - world.bb.z0);
       if (!free(x, z, 40)) continue;
       claim(x, z, 40);
@@ -288,7 +308,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
     const plat = new THREE.BoxGeometry(2.2, 0.15, 2.2);
     const camG = new THREE.BoxGeometry(0.5, 0.45, 0.9);
     const person = new THREE.CapsuleGeometry(0.25, 0.8, 4, 8); person.translate(0, 0.65, 0);
-    const list = cams.filter((c) => c.tag !== 'boxes');
+    const list = cams.filter((c) => c.tag !== 'boxes' && c.tag !== 'tunel');
     const iL = new THREE.InstancedMesh(leg, legM, list.length * 4), iP = new THREE.InstancedMesh(plat, legM, list.length);
     const iC = new THREE.InstancedMesh(camG, new THREE.MeshStandardMaterial({ color: 0x1b1b1f, roughness: 0.4 }), list.length);
     const iM = new THREE.InstancedMesh(person, new THREE.MeshStandardMaterial({ color: 0xff6d00, roughness: 0.7 }), list.length);
@@ -402,6 +422,7 @@ export function buildScenery(T, scene, world, quality, sunDir) {
     let a = 0;
     out.update = (dt, focus, camPos) => {
       if (camPos) out.dome.position.copy(camPos);
+      if (out.coast) out.coast.update(dt, camPos);
       for (const t of turbines) t.rot.rotation.z += dt * t.sp;
       if (out.ferris) out.ferris.rotation.z += dt * 0.03;
       a += dt * 0.12;

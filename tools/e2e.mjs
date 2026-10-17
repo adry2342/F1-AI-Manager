@@ -19,7 +19,7 @@ await p.goto(URL0); await p.waitForSelector('#iGo', { timeout: 150000 });
 if (a.track && (await ev(() => document.getElementById('iTrack').value)) !== a.track) {
   await setSel('iTrack', a.track); await p.waitForTimeout(1500); await p.waitForSelector('#iGo', { timeout: 150000 });
 }
-check('portada: 5 tarjetas de circuito', (await p.$$('.tcard')).length === 5);
+check('portada: 6 tarjetas de circuito', (await p.$$('.tcard')).length === 6);
 check('portada sin cargar el circuito', !(await ev(() => !!window.__sim)));
 await click('.seg[data-for="iMode"] button[data-v="mgr"]');
 check('portada: mánager muestra equipos', await ev(() => !document.querySelector('.teams').classList.contains('off')));
@@ -46,7 +46,7 @@ if (a.mode === 'mgr') {
 }
 
 // --- cámaras y controles
-for (const t of ['chase', 'cockpit', 'tcam', 'nose', 'rear', 'heli', 'track', 'free']) {
+for (const t of ['chase', 'cockpit', 'tcam', 'nose', 'rear', 'heli', 'track', 'wide', 'free']) {
   await click(`[data-cam="${t}"]`); await p.waitForTimeout(400);
   check(`cámara ${t}`, await ev((x) => window.__dir.type === x, t));
 }

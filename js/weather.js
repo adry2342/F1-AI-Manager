@@ -105,11 +105,12 @@ export function buildWeather(scene, world, scenery, renderer, camera, quality) {
     cloud += (cTarget - cloud) * Math.min(1, dt / 6);
     if (first) cloud = cTarget;
     world.sun.intensity = base.sun * (1 - (night ? 0.18 : 0.8) * cloud);
-    if (world.hemi) world.hemi.intensity = base.hemi * (1 + (night ? 0 : 0.35) * cloud);
+    // (world.tunnelDim: dentro del túnel apenas llega luz de fuera; ver coast.js)
+    if (world.hemi) world.hemi.intensity = base.hemi * (1 + (night ? 0 : 0.35) * cloud) * (world.tunnelDim ?? 1);
     scene.fog.color.copy(base.fogC).lerp(fogWet, cloud * 0.9);
     scene.fog.near = lerp(base.fogN, night ? 160 : 170, Math.min(1, rainAmt * 1.3));
     scene.fog.far = lerp(base.fogF, night ? 1500 : 2100, Math.min(1, rainAmt * 1.2));
-    scene.environmentIntensity = base.env * (1 - 0.35 * cloud * (night ? 0 : 1));
+    scene.environmentIntensity = base.env * (1 - 0.35 * cloud * (night ? 0 : 1)) * (world.tunnelDim ?? 1);
     if (scenery.dome) scenery.dome.material.uniforms.cloud.value = cloud;
     if (scenery.cloudMat) { scenery.cloudMat.color.copy(white).lerp(cloudCol, cloud); scenery.cloudMat.opacity = 0.9 * (1 - 0.5 * cloud); }
     // --- suelo mojado (solo se tocan los materiales si ha cambiado algo)

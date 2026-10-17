@@ -355,7 +355,7 @@ export class Sim {
     const r = this.rng, mode = this.weatherMode || 'random';
     const dur = id === 'RACE' ? this.raceLaps * 95 : SESSIONS[id].dur;
     let kind = mode;
-    if (mode === 'random') { const x = r(), dry = this.T.meta?.autumn ? 0.6 : 0.82; kind = x < dry ? 'dry' : x < dry + (1 - dry) * 0.72 ? 'mixed' : 'wet'; }
+    if (mode === 'random') { const x = r(), dry = this.T.meta?.autumn ? 0.6 : this.T.meta?.coast ? 0.9 : 0.82; kind = x < dry ? 'dry' : x < dry + (1 - dry) * 0.72 ? 'mixed' : 'wet'; }
     // en el bosque el chubasco no cubre todo el circuito: un núcleo que se desplaza despacio a lo largo de la vuelta
     this.cell = this.T.meta?.autumn ? { s0: r() * this.T.L, v: (r() < 0.5 ? -1 : 1) * this.T.L / (1500 + r() * 1500) } : null;
     const ev = [];

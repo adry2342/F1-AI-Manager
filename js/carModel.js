@@ -23,7 +23,7 @@ function loft(stations, around = 32, nExp = 3.2) {
       const x = (st.cx ?? 0) + st.w * Math.sign(c) * Math.pow(Math.abs(c), 2 / n);
       const y = yc + h * Math.sign(s) * Math.pow(Math.abs(s), 2 / n) * (s < 0 ? (st.flat ?? 1) : 1);
       pos.push(x, y, st.z);
-      uv.push(a / around, si / (ns - 1));
+      uv.push(a / around, (st.vi ?? si) / ((stations.vCount ?? ns) - 1));   // (vi: estación intercalada, sin mover la librea)
     }
   }
   const row = around + 1;
@@ -166,6 +166,39 @@ function bodyStations() {
   ];
 }
 
+// Chasis con el hueco del cockpit: estaciones intercaladas cada ~6 cm en la zona del piloto (la librea no se mueve: cada
+// una guarda su posición en el mapa original) y la parte de arriba de dentro de la elipse hundida hasta el fondo de la
+// bañera; lo de dentro, en negro (grupo 1 de materiales)
+const CK = { z: 0.17, a: 0.45, b: 0.245, floor: 0.40 };
+function cockpitBody() {
+  const base = bodyStations(), st = [];
+  base.forEach((s0, i) => {
+    st.push({ ...s0, vi: i });
+    const s1 = base[i + 1]; if (!s1 || s0.z < -0.7 || s1.z > 1.0) return;
+    const n = Math.ceil((s0.z - s1.z) / 0.06);
+    for (let k = 1; k < n; k++) { const f = k / n, m = {}; for (const key of ['z', 'w', 'yb', 'yt', 'n']) m[key] = s0[key] + (s1[key] - s0[key]) * f; m.vi = i + f; st.push(m); }
+  });
+  st.vCount = base.length;
+  const geo = loft(st, 40), p = geo.attributes.position;
+  const rr = (x, z) => Math.hypot(x / CK.b, (z - CK.z) / CK.a);
+  for (let i = 0; i < p.count; i++) {
+    const x = p.getX(i), y = p.getY(i), z = p.getZ(i), r = rr(x, z);
+    if (y < 0.45 || r >= 1) continue;
+    const k = 1 - Math.min(1, Math.max(0, (r - 0.8) / 0.2)), kk = k * k * (3 - 2 * k);
+    p.setY(i, y + (CK.floor - y) * kk);
+  }
+  // triángulos de dentro (hundidos) al grupo negro
+  const ix = geo.index.array, out = [], inn = [];
+  for (let k = 0; k < ix.length; k += 3) {
+    const a = ix[k], b = ix[k + 1], c = ix[k + 2];
+    const cx = (p.getX(a) + p.getX(b) + p.getX(c)) / 3, cy = (p.getY(a) + p.getY(b) + p.getY(c)) / 3, cz = (p.getZ(a) + p.getZ(b) + p.getZ(c)) / 3;
+    (cy > 0.38 && rr(cx, cz) < 0.93 ? inn : out).push(a, b, c);
+  }
+  geo.setIndex(out.concat(inn)); geo.clearGroups(); geo.addGroup(0, out.length, 0); geo.addGroup(out.length, inn.length, 1);
+  geo.computeVertexNormals();
+  return geo;
+}
+
 // El borde interior se mete dentro del chasis (x = 0.12) para que el pontón nazca del cuerpo y no quede una raja entre los dos
 function sidepodStations(side) {
   const st = (z, outer, yb, yt, n) => ({ z, w: (outer - 0.12) / 2, cx: side * (outer + 0.12) / 2, yb, yt, n });
@@ -196,7 +229,8 @@ export function buildCar(team, drv) {
   };
 
   // --- 1. CHASIS Y CARROCERÍA PRINCIPAL
-  add(hi, g('body', () => loft(bodyStations(), 32)), M.paint);
+  // (con el hueco del cockpit de verdad: el volante y los hombros del piloto quedan dentro, no atravesando la carrocería)
+  add(hi, g('body', cockpitBody), [M.paint, M.black]);
   add(hi, g('podL', () => loft(sidepodStations(1), 28)), M.paint);
   add(hi, g('podR', () => loft(sidepodStations(-1), 28)), M.paint);
 
@@ -208,7 +242,7 @@ export function buildCar(team, drv) {
 
   // Hueco del cockpit y borde acolchado protector
   const cockpitHole = add(hi, g('cockpit', () => new THREE.CircleGeometry(0.26, 24).scale(1, 1.75, 1)), M.black, false);
-  cockpitHole.rotation.x = -Math.PI / 2 + 0.06; cockpitHole.position.set(0, 0.612, 0.12);
+  cockpitHole.rotation.x = -Math.PI / 2; cockpitHole.position.set(0, CK.floor + 0.01, CK.z); cockpitHole.scale.set(0.9, 0.9, 1);
 
   // Marco acolchado del cockpit (headrest protection)
   const headrest = add(hi, g('headrest', () => {
@@ -351,8 +385,8 @@ export function buildCar(team, drv) {
   harness.position.set(0, 0.60, 0.02);
 
   // Volante tipo mariposa (butterfly yoke) con empuñaduras, botones, luces de cambio y pantalla; gira con la dirección
-  // (swheel.rotation.z, ver place en main.js). Columna inclinada; el giro es en su plano
-  const column = new THREE.Group(); column.position.set(0, 0.685, 0.5); column.rotation.x = -0.5; hi.add(column);
+  // (swheel.rotation.z, ver place en main.js). Casi vertical, como en los coches de verdad; el giro es en su plano
+  const column = new THREE.Group(); column.position.set(0, 0.685, 0.5); column.rotation.x = -0.06; hi.add(column);
   const swheel = new THREE.Group(); column.add(swheel);
   add(swheel, g('swheel', () => box(0.21, 0.085, 0.028)), M.black);
   for (const sd of [1, -1]) {

@@ -44,7 +44,7 @@ async function main(choice) {
   // (el tamaño sale del propio lienzo: en vertical solo ocupa la parte de arriba, ver body.portrait)
   renderer.setSize(canvas.clientWidth || window.innerWidth, canvas.clientHeight || window.innerHeight, false);
   renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = CIRCUITS[trackId].night ? 1.05 : CIRCUITS[trackId].sunset ? 0.95 : CIRCUITS[trackId].autumn ? 0.9 : 0.82;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = CIRCUITS[trackId].night ? 1.05 : CIRCUITS[trackId].sunset ? 0.95 : CIRCUITS[trackId].autumn ? 0.9 : CIRCUITS[trackId].coast ? 0.7 : 0.82;
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   TX.setAnisotropy(Math.min(8, renderer.capabilities.getMaxAnisotropy()));
   const scene = new THREE.Scene();
@@ -56,6 +56,7 @@ async function main(choice) {
   const world = buildWorld(T, scene, renderer, quality);
   // ajuste de visibilidad (ver LOOK en textures.js): b más luz; c y d algo más de luz y de relleno en las sombras
   { const L = TX.LOOK; if (L !== 'a') { renderer.toneMappingExposure *= L === 'b' ? 1.28 : 1.1; if (world.hemi) world.hemi.intensity *= L === 'b' ? 1.3 : 1.2; } }
+  const exposure0 = renderer.toneMappingExposure;   // (el túnel la sube y la baja: el ojo se adapta; ver coast.js)
   msg('Plantando bosques y montando el paddock…'); await frame();
   const scenery = buildScenery(T, scene, world, quality, world.sunDir);
   msg('Preparando los 22 monoplazas…'); await frame();
@@ -252,6 +253,8 @@ async function main(choice) {
     focusPos.copy(visuals[director.focus.i].root.position);
     world.update(dt, sim, focusPos, camera.position);
     scenery.update(dt, focusPos, camera.position);
+    if (world.exposureK) renderer.toneMappingExposure = exposure0 * world.exposureK;
+    app.audio.tunnel = world.tunnelK || 0;
     app.audio.update(director.focus, director.type, camera, focusPos, app.skipping ? 99 : replaying ? 1 : app.speed, sim, visuals);
     radio.update(dt, app.skipping ? 99 : app.speed);
     app.manager?.update(dt);

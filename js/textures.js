@@ -313,6 +313,49 @@ export function glass() {
   });
 }
 
+// muro cortina del edificio de boxes: 12 m de ancho por una planta; montantes cada 1,5 m, reflejo del cielo arriba,
+// techo con luminarias y algo de interior (mesas, gente) detrás del vidrio. lit: solo lo que brilla, para emissiveMap
+export function curtainWall(lit = false) {
+  return once('curtain' + lit, () => {
+    const W = 512, H = 192, c = canvas(W, H), g = c.getContext('2d'), r = rnd(lit ? 41 : 41);
+    const bw = W / 8;
+    if (lit) {
+      g.fillStyle = '#000'; g.fillRect(0, 0, W, H);
+      for (let k = 0; k < 8; k++) { g.fillStyle = r() < 0.8 ? '#fff1d6' : '#d8ecff'; for (let x = 6; x < bw - 6; x += 14) g.fillRect(k * bw + x, 12, 8, 3); }
+      g.fillStyle = 'rgba(255,226,170,0.35)'; g.fillRect(0, 16, W, 60);
+      return tex(c);
+    }
+    // interior: techo claro, fondo cálido, mesas y personas a contraluz
+    const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#c9ccd0'); gr.addColorStop(0.12, '#8f8a82'); gr.addColorStop(0.6, '#4a4844'); gr.addColorStop(1, '#2c2b2a');
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (let k = 0; k < 8; k++) for (let x = 6; x < bw - 6; x += 14) { g.fillStyle = '#fff6e4'; g.fillRect(k * bw + x, 12, 8, 3); }
+    for (let i = 0; i < 26; i++) {
+      const x = r() * W, y = 118 + r() * 16;
+      if (r() < 0.45) { g.fillStyle = 'rgba(235,232,225,0.55)'; g.fillRect(x - 10, y + 10, 20, 4); }
+      else { g.fillStyle = `rgba(${20 + r() * 40},${20 + r() * 40},${30 + r() * 50},0.8)`; g.fillRect(x - 3, y - 16, 6, 34); g.beginPath(); g.arc(x, y - 21, 4, 0, 7); g.fill(); }
+    }
+    // reflejo del cielo (más fuerte arriba) y una diagonal de brillo
+    const rf = g.createLinearGradient(0, 0, 0, H); rf.addColorStop(0, 'rgba(120,160,190,0.62)'); rf.addColorStop(0.55, 'rgba(60,92,118,0.42)'); rf.addColorStop(1, 'rgba(25,40,55,0.55)');
+    g.fillStyle = rf; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,255,255,0.09)'; g.beginPath(); g.moveTo(60, 0); g.lineTo(190, 0); g.lineTo(110, H); g.lineTo(-20, H); g.fill();
+    // carpintería: montantes, travesaño bajo y perfiles de forjado
+    g.fillStyle = '#9aa2aa'; for (let k = 0; k <= 8; k++) g.fillRect(k * bw - 2, 0, 4, H);
+    g.fillStyle = '#c4c9ce'; g.fillRect(0, 0, W, 5); g.fillRect(0, H - 5, W, 5); g.fillStyle = 'rgba(210,215,220,0.8)'; g.fillRect(0, H - 52, W, 3);
+    return tex(c);
+  });
+}
+
+// persiana enrollable de un garaje cerrado (gris claro, lamas horizontales)
+export function shutter() {
+  return once('shutter', () => {
+    const c = canvas(128, 256), g = c.getContext('2d');
+    g.fillStyle = '#c3c7cc'; g.fillRect(0, 0, 128, 256);
+    for (let y = 0; y < 256; y += 8) { g.fillStyle = 'rgba(0,0,0,0.16)'; g.fillRect(0, y, 128, 2); g.fillStyle = 'rgba(255,255,255,0.25)'; g.fillRect(0, y + 2, 128, 1); }
+    g.fillStyle = '#7d838b'; g.fillRect(0, 0, 6, 256); g.fillRect(122, 0, 6, 256); g.fillRect(0, 248, 128, 8);
+    return tex(c);
+  });
+}
+
 export function numberTex(num, fg = '#ffffff', bg = null) {
   return once('num' + num + fg + bg, () => {
     const c = canvas(256, 256), g = c.getContext('2d');
